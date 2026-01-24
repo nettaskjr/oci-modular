@@ -51,4 +51,4 @@ systemctl restart postgresql
 systemctl enable postgresql
 
 # Notificar Discord sobre Database UP
-notify_discord "🛢️ **Database: PostgreSQL UP!**\n- 🔄 Aguardando setup do Kubernetes..."
+notify_discord "- 🛢️ **Database: PostgreSQL UP!**\n- 🔄 Aguardando setup do Kubernetes..."
