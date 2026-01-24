@@ -9,9 +9,7 @@ exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 notify_discord() {
   local MESSAGE="$1"
   if [ -n "${discord_webhook_url}" ]; then
-    # Usamos o printf para garantir que o \n seja interpretado corretamente no JSON
-    local JSON_PAYLOAD=$(printf '{"content": "%b"}' "$MESSAGE")
-    curl -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "${discord_webhook_url}" || true
+    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${discord_webhook_url}" || true
   fi
 }
 

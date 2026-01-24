@@ -9,9 +9,7 @@ exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 notify_discord() {
   local MESSAGE="$1"
   if [ -n "${discord_webhook_url}" ]; then
-    # Usamos o printf para garantir que o \n seja interpretado corretamente no JSON
-    local JSON_PAYLOAD=$(printf '{"content": "%b"}' "$MESSAGE")
-    curl -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "${discord_webhook_url}" || true
+    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${discord_webhook_url}" || true
   fi
 }
 
@@ -19,12 +17,19 @@ notify_discord() {
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get upgrade -y
 
-# Abrir porta 5432 no firewall interno do Ubuntu (OCI padrão bloqueia)
+# Abrir porta 5432 no firewall interno do Ubuntu (OCI padrão bloqueia com REJECT)
+# Usamos -I INPUT 1 para garantir que seja a PRIMEIRA regra, antes de qualquer REJECT.
 if command -v iptables > /dev/null; then
-  iptables -I INPUT 6 -p tcp --dport 5432 -j ACCEPT
-  # Tentar salvar as regras se o pacote estiver instalado
+  iptables -I INPUT 1 -p tcp --dport 5432 -j ACCEPT
+  
+  # Desativar ufw se estiver ativo, para evitar conflitos (OCI usa iptables puro)
+  if command -v ufw > /dev/null; then
+    ufw disable || true
+  fi
+
+  # Salvar as regras
   if [ -f /sbin/netfilter-persistent ]; then
-    netfilter-persistent save
+    netfilter-persistent save || true
   fi
 fi
 
