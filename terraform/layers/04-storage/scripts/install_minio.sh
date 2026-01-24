@@ -1,4 +1,5 @@
 #!/bin/bash
+# OCI User Data Script - MinIO
 set -e
 
 # Log de execução para debug
