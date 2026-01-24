@@ -1,5 +1,17 @@
 #!/bin/bash
+# OCI User Data Script - PostgresSQL
 set -e
+
+# Log de execução para debug
+exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+
+# Função de Notificação Discord
+notify_discord() {
+  local MESSAGE="$1"
+  if [ -n "${discord_webhook_url}" ]; then
+    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${discord_webhook_url}" || true
+  fi
+}
 
 # Atualizar sistema
 export DEBIAN_FRONTEND=noninteractive

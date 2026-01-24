@@ -29,8 +29,12 @@ resource "oci_core_security_list" "strict_sl" {
   vcn_id         = oci_core_vcn.main_vcn.id
   display_name   = "strict-security-list"
 
-  # Ingress: Bloquear todo o tráfego de entrada (Zero Trust via Cloudflare Tunnel)
-  # Nenhuma regra de ingress é necessária pois a conexão é iniciada de dentro para fora (Egress)
+  # Ingress: Permitir tráfego interno da VCN (Essencial para comunicação K8s <-> DB)
+  ingress_security_rules {
+    protocol    = "all"
+    source      = "10.0.0.0/16"
+    description = "Allow all internal VCN traffic"
+  }
 
   # DEBUG: SSH Temporário
   # ingress_security_rules {
