@@ -144,6 +144,7 @@ Host ssh.seu-dominio.com.br
 |---------|-----------|
 | `kubectl get pods -A` | Lista todos os pods no cluster. |
 | `kubectl logs -f [POD] -n [NS]` | Acompanha logs em tempo real. |
+| `kubectl rollout restart deploy portainer -n portainer` | Reinicia o Portainer (útil para erro de timeout de admin). |
 | `tail -f /var/log/user-data.log` | Verifica o progresso do boot nas instâncias. |
 | `sudo systemctl restart k3s` | Reinicia o Kubernetes no host. |
 | `nc -zv [IP_INTERNO] [PORTA]` | Testa conectividade entre camadas (K8s <-> DB). |

@@ -17,10 +17,11 @@ notify_discord() {
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get upgrade -y
 
-# Abrir portas 9000 (API) e 9001 (Console) no firewall interno
+# Abrir portas no firewall interno do Ubuntu
 if command -v iptables > /dev/null; then
-  iptables -I INPUT 1 -p tcp --dport 9000 -j ACCEPT
-  iptables -I INPUT 1 -p tcp --dport 9001 -j ACCEPT
+  iptables -I INPUT 1 -p tcp --dport 9000 -j ACCEPT # MinIO API
+  iptables -I INPUT 1 -p tcp --dport 9001 -j ACCEPT # MinIO Console
+  iptables -I INPUT 1 -p tcp --dport 9100 -j ACCEPT # Node Exporter
   
   if command -v ufw > /dev/null; then
     ufw disable || true
@@ -30,6 +31,11 @@ if command -v iptables > /dev/null; then
     netfilter-persistent save || true
   fi
 fi
+
+# Instalar Node Exporter para monitoramento
+apt-get install -y prometheus-node-exporter
+systemctl enable prometheus-node-exporter
+systemctl start prometheus-node-exporter
 
 # Baixar e instalar MinIO para AMD64
 wget https://dl.min.io/server/minio/release/linux-amd64/minio -O /usr/local/bin/minio
@@ -74,4 +80,4 @@ systemctl enable minio
 systemctl start minio
 
 # Notificar Discord
-notify_discord "☁️ **MinIO Storage UP!**\n- 📂 Console: http://10.0.1.x:9001\n- 🔄 Pronto para uso como S3 interno."
+notify_discord "- ☁️ **Storage: MinIO UP!**\n- 📂 Console: http://[IP_ADDRESS]\n- 🔄 Pronto para uso como S3 interno."

@@ -17,12 +17,12 @@ notify_discord() {
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get upgrade -y
 
-# Abrir porta 5432 no firewall interno do Ubuntu (OCI padrão bloqueia com REJECT)
-# Usamos -I INPUT 1 para garantir que seja a PRIMEIRA regra, antes de qualquer REJECT.
+# Abrir portas no firewall interno do Ubuntu
 if command -v iptables > /dev/null; then
-  iptables -I INPUT 1 -p tcp --dport 5432 -j ACCEPT
+  iptables -I INPUT 1 -p tcp --dport 5432 -j ACCEPT # PostgreSQL
+  iptables -I INPUT 1 -p tcp --dport 9100 -j ACCEPT # Node Exporter
   
-  # Desativar ufw se estiver ativo, para evitar conflitos (OCI usa iptables puro)
+  # Desativar ufw se estiver ativo
   if command -v ufw > /dev/null; then
     ufw disable || true
   fi
@@ -32,6 +32,11 @@ if command -v iptables > /dev/null; then
     netfilter-persistent save || true
   fi
 fi
+
+# Instalar Node Exporter para monitoramento
+apt-get install -y prometheus-node-exporter
+systemctl enable prometheus-node-exporter
+systemctl start prometheus-node-exporter
 
 # Instalar PostgreSQL
 apt-get install -y postgresql postgresql-contrib

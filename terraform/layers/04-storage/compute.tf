@@ -44,6 +44,20 @@ resource "oci_core_network_security_group_security_rule" "minio_rule_console" {
   }
 }
 
+resource "oci_core_network_security_group_security_rule" "minio_rule_exporter" {
+  network_security_group_id = oci_core_network_security_group.minio_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source                    = "10.0.0.0/16"
+  source_type               = "CIDR_BLOCK"
+  tcp_options {
+    destination_port_range {
+      max = 9100
+      min = 9100
+    }
+  }
+}
+
 resource "oci_core_instance" "minio_instance" {
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
   compartment_id      = var.compartment_ocid
