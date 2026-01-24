@@ -35,7 +35,7 @@ cloudflared service install "${tunnel_token}" || true
 systemctl restart cloudflared
 
 # Notificar Discord sobre SSH (Túnel UP)
-notify_discord "⏳ **Cloudflare Tunnel UP!**\n- 🖥️ SSH disponível: \`ssh ssh.${domain_name}\`\n- 🔄 Aguardando setup do Kubernetes..."
+notify_discord "⏳ **Cloudflare Tunnel UP!**\n- 🔐 SSH disponível: \`ssh ssh.${domain_name}\`\n- 🔄 Aguardando setup do Kubernetes..."
 
 # 3. Instalação do K3s
 export K3S_KUBECONFIG_MODE="644"

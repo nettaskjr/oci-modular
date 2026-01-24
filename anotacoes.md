@@ -1,28 +1,50 @@
-Para conferir se o banco está respondendo, use o seguinte comando:
+# 📓 Anotações Rápidas - OCI Modular
 
-```bash
-nc -zv 10.0.1.66 5432
-``` 
+## 🌐 IPs Internos (Consultar via Terraform Output)
+- **Kubernetes (Subnet):** `10.0.1.0/24`
+- **PostgreSQL:** `10.0.1.x` (Porta `5432`)
+- **MinIO API:** `10.0.1.x` (Porta `9000`)
+- **MinIO Console:** `10.0.1.x` (Porta `9001`)
 
-Para conectar em uma instancia que nao tem acesso ao mundo externo use o seguinte comando:
-
+## 🔑 Comandos de Acesso
+### SSH via Tunnel (Kubernetes Jump Host)
 ```bash
 ssh-add ~/.ssh/id_ed25519
 ssh -A ubuntu@ssh.nettask.com.br
-ssh [ip-local]
+ssh 10.0.1.
 ```
 
-Para executar o init do terraform use o seguinte comando:
-
+### Teste de acesso ao PostgreSQL
 ```bash
-
+nc -zv <IP_DO_POSTGRESQL> 5432
 ```
 
-
-Para executar o apply do terraform use o seguinte comando:
-
+### Túnel para Console MinIO
 ```bash
-terraform -chdir=terraform/layers/03-database apply \
+ssh -L 9001:<IP_MINIO>:9001 ubuntu@ssh.nettask.com.br
+# Acesse: http://localhost:9001
+```
+
+## 🛠️ Manutenção Local
+### Init em uma camada específica
+```bash
+terraform -chdir=terraform/layers/0X-nome init \
+  -backend-config="bucket=terraform-nettask.com.br" \
+  -backend-config="region=us-east-1"
+```
+
+### Apply em uma camada específica
+```bash
+terraform -chdir=terraform/layers/0X-nome apply \
   -var-file="../../../terraform.tfvars" \
   -var-file="../../../terraform.auto.tfvars"
 ```
+
+## 🛢️ PostgreSQL
+- **Host:** IP Interno da instância DB
+- **Porta:** 5432
+- **Acesso:** Apenas rede `10.0.0.0/16`
+
+## ☁️ MinIO (S3 link)
+- **Endpoint:** `http://<IP_INTERNO>:9000`
+- **Console:** `http://<IP_INTERNO>:9001`
