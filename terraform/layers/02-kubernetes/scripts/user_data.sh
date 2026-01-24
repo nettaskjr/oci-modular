@@ -9,7 +9,9 @@ exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 notify_discord() {
   local MESSAGE="$1"
   if [ -n "${discord_webhook_url}" ]; then
-    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${discord_webhook_url}" || true
+    # Usamos o printf para garantir que o \n seja interpretado corretamente no JSON
+    local JSON_PAYLOAD=$(printf '{"content": "%b"}' "$MESSAGE")
+    curl -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "${discord_webhook_url}" || true
   fi
 }
 
@@ -97,6 +99,6 @@ kubectl wait --for=condition=ready pod --all -n portainer --timeout=300s || noti
 kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || notify_discord "❌ Aviso: Nem todos os pods de Monitoramento ficaram prontos a tempo."
 
 # 6. Notificar Discord Final
-notify_discord "🚀 **Infra OCI Pronta (veja se tem alguma msg acima de falha)!**\n- 🖥️ SSH: \`ssh ssh.${domain_name}\` (Zero Trust)\n- ☸️ Kubernetes: K3s Up\n- 🐳 Portainer: https://portainer.${domain_name} (Pods Ready)\n- 📊 Grafana: https://grafana.${domain_name} (Pods Ready)\n\n_Deploy e Health Check finalizados com sucesso!_"
+notify_discord "🚀 **Infra OCI Pronta (veja se tem alguma msg acima de falha)!**\n- ☸️ Kubernetes: K3s Up\n- 🐳 Portainer: https://portainer.${domain_name} (Pods Ready)\n- 📊 Grafana: https://grafana.${domain_name} (Pods Ready)\n\n_Deploy e Health Check finalizados com sucesso!_"
 
 echo "Configuração finalizada."

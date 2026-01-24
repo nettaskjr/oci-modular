@@ -7,6 +7,7 @@ cloudflare_zone_id    = "e48378dc6b5deb23ee5acbb9fa75b243" # Pegue no dashboard 
 cloudflare_account_id = "d5aee7bff071474726766f0ee411b9b5" # Pegue no dashboard, mesmo lugar do Zone ID ou URL
 domain_name           = "nettask.com.br"
 github_repo           = "https://github.com/nettaskjr/manifestos-kubernetes.git"
+state_bucket_name     = "terraform-nettask.com.br"
 
 # Opcionais (Defaults já definidos)
 # instance_shape           = "VM.Standard.A1.Flex"

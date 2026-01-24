@@ -9,13 +9,24 @@ exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 notify_discord() {
   local MESSAGE="$1"
   if [ -n "${discord_webhook_url}" ]; then
-    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${discord_webhook_url}" || true
+    # Usamos o printf para garantir que o \n seja interpretado corretamente no JSON
+    local JSON_PAYLOAD=$(printf '{"content": "%b"}' "$MESSAGE")
+    curl -H "Content-Type: application/json" -d "$JSON_PAYLOAD" "${discord_webhook_url}" || true
   fi
 }
 
 # Atualizar sistema
 export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get upgrade -y
+
+# Abrir porta 5432 no firewall interno do Ubuntu (OCI padrão bloqueia)
+if command -v iptables > /dev/null; then
+  iptables -I INPUT 6 -p tcp --dport 5432 -j ACCEPT
+  # Tentar salvar as regras se o pacote estiver instalado
+  if [ -f /sbin/netfilter-persistent ]; then
+    netfilter-persistent save
+  fi
+fi
 
 # Instalar PostgreSQL
 apt-get install -y postgresql postgresql-contrib
@@ -34,9 +45,5 @@ sudo -u postgres psql -c "CREATE DATABASE ${db_name} OWNER ${db_user};"
 systemctl restart postgresql
 systemctl enable postgresql
 
-# Notificar Discord (opcional se a URL estiver presente)
-if [ -n "${discord_webhook_url}" ]; then
-  curl -H "Content-Type: application/json" \
-    -d "{\"embeds\": [{\"title\": \"✅ Database Provisioned\", \"description\": \"PostgreSQL instalado na instância AMD Always Free.\", \"color\": 3066993}]}" \
-    "${discord_webhook_url}"
-fi
+# Notificar Discord sobre Database UP
+notify_discord "🛢️ **Database: PostgreSQL UP!**\n- 🔄 Aguardando setup do Kubernetes..."
