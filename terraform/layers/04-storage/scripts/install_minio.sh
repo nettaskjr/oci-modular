@@ -74,10 +74,17 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 EOT
 
-# Iniciar MinIO
+# Criar pasta de logs para o MinIO
+mkdir -p /var/log/minio
+chown minio-user:minio-user /var/log/minio
+
+# Ajustar Systemd Service para salvar logs em arquivo
+sed -i 's|ExecStart=|StandardOutput=append:/var/log/minio/minio.log\nStandardError=append:/var/log/minio/minio.log\nExecStart=|' /etc/systemd/system/minio.service
+
+# Iniciar/Reiniciar MinIO
 systemctl daemon-reload
 systemctl enable minio
-systemctl start minio
+systemctl restart minio
 
 # Instalar Promtail para logs
 PROMTAIL_VERSION="2.9.2"
@@ -111,6 +118,15 @@ scrape_configs:
     - source_labels: ['__journal__systemd_unit']
       target_label: 'unit'
 
+- job_name: minio-files
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: minio-logs
+      host: storage-minio
+      __path__: /var/log/minio/*.log
+
 - job_name: storage-files
   static_configs:
   - targets:
@@ -139,7 +155,7 @@ EOF
 
 systemctl daemon-reload
 systemctl enable promtail
-systemctl start promtail
+systemctl restart promtail
 
 # Notificar Discord sobre Storage UP
-notify_discord "- ☁️ **Storage: MinIO UP! (Logs OK)**"
+notify_discord "- ☁️ **Storage: MinIO UP! (Full Logs OK)**"
