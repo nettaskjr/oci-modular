@@ -79,5 +79,57 @@ systemctl daemon-reload
 systemctl enable minio
 systemctl start minio
 
-# Notificar Discord
-notify_discord "- ☁️ **Storage: MinIO UP!**\n"
+# Instalar Promtail para logs
+PROMTAIL_VERSION="2.9.2"
+curl -Lo promtail.zip "https://github.com/grafana/loki/releases/download/v$${PROMTAIL_VERSION}/promtail-linux-amd64.zip"
+apt-get install -y unzip
+unzip promtail.zip
+mv promtail-linux-amd64 /usr/local/bin/promtail
+chmod +x /usr/local/bin/promtail
+
+# Criar configuração do Promtail
+mkdir -p /etc/promtail
+cat <<EOF > /etc/promtail/config.yml
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki.${domain_name}/loki/api/v1/push
+
+scrape_configs:
+- job_name: storage-logs
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: system-logs
+      host: storage-minio
+      __path__: /var/log/*.log
+EOF
+
+# Criar serviço Systemd para o Promtail
+cat <<EOF > /etc/systemd/system/promtail.service
+[Unit]
+Description=Promtail agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/promtail -config.file=/etc/promtail/config.yml
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable promtail
+systemctl start promtail
+
+# Notificar Discord sobre Storage UP
+notify_discord "- ☁️ **Storage: MinIO UP! (Logs OK)**"

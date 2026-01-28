@@ -89,6 +89,24 @@ if [ -d "$STACK_DIR" ]; then
   
   echo "#### Aplicando Monitoramento..."
   kubectl apply -f $STACK_DIR/k8s-monitoring/
+
+  echo "#### Expondo Loki endpoint..."
+  cat <<EOF | kubectl apply -f -
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: loki-external
+  namespace: monitoring
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: Host(\`loki.${domain_name}\`)
+    kind: Rule
+    services:
+    - name: loki
+      port: 3100
+EOF
 else
   echo "Repositório de Stack não encontrado."
 fi

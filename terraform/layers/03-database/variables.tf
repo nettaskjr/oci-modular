@@ -26,3 +26,8 @@ variable "db_name" {
   type        = string
   default     = "app_db"
 }
+
+variable "domain_name" {
+  description = "Domínio principal do projeto"
+  type        = string
+}

@@ -83,6 +83,7 @@ resource "oci_core_instance" "minio_instance" {
       minio_root_user     = var.minio_root_user
       minio_root_password = var.minio_root_password
       discord_webhook_url = var.discord_webhook_url
+      domain_name         = var.domain_name
     }))
   }
 }
