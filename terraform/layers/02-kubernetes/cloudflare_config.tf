@@ -9,6 +9,12 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "auto_tunnel_config" 
       service  = "ssh://localhost:22"
     }
 
+    # Regra para Console MinIO
+    ingress_rule {
+      hostname = "minio.${var.domain_name}"
+      service  = "http://${data.terraform_remote_state.storage.outputs.minio_internal_ip}:9001"
+    }
+
     # Regra genérica para HTTP/HTTPS (Web)
     ingress_rule {
       service = "http://localhost:80"
