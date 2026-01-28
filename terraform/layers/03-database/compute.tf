@@ -71,6 +71,7 @@ resource "oci_core_instance" "db_instance" {
       db_name             = var.db_name
       discord_webhook_url = var.discord_webhook_url
       domain_name         = var.domain_name
+      k8s_dns_name        = "${var.instance_display_name}.public.mainvcn.oraclevcn.com"
     }))
   }
 }

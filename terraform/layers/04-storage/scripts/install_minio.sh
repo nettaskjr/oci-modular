@@ -98,7 +98,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://loki.${domain_name}/loki/api/v1/push
+  - url: http://${k8s_dns_name}/loki/api/v1/push
 
 scrape_configs:
 - job_name: storage-logs

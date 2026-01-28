@@ -101,7 +101,7 @@ spec:
   entryPoints:
     - web
   routes:
-  - match: Host(\`loki.${domain_name}\`)
+  - match: Host(\`loki.${domain_name}\`) || Host(\`${instance_display_name}.public.mainvcn.oraclevcn.com\`)
     kind: Rule
     services:
     - name: loki

@@ -22,3 +22,8 @@ variable "minio_root_password" {
 }
 
 variable "domain_name" {}
+
+variable "instance_display_name" {
+  description = "Nome de exibição da instância Kubernetes (usado para DNS interno)"
+  type        = string
+}

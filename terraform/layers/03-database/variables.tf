@@ -31,3 +31,8 @@ variable "domain_name" {
   description = "Domínio principal do projeto"
   type        = string
 }
+
+variable "instance_display_name" {
+  description = "Nome de exibição da instância Kubernetes (usado para DNS interno)"
+  type        = string
+}

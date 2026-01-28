@@ -35,16 +35,17 @@ resource "oci_core_instance" "ubuntu_instance" {
     ssh_authorized_keys = file(var.ssh_public_key_path)
     # Cloud-Init Script para instalar e configurar Cloudflared K3s e manifestos iniciais
     user_data = base64encode(templatefile("${path.module}/scripts/user_data.sh", {
-      tunnel_token        = data.terraform_remote_state.base.outputs.tunnel_token
-      discord_webhook_url = var.discord_webhook_url
-      domain_name         = var.domain_name
-      user_instance       = var.user_instance
-      github_repo         = var.github_repo
-      cloudflared_version = var.cloudflared_version
-      grafana_user        = var.grafana_admin_user
-      grafana_pass        = var.grafana_admin_password
-      db_internal_ip      = data.terraform_remote_state.database.outputs.db_internal_ip
-      minio_internal_ip   = data.terraform_remote_state.storage.outputs.minio_internal_ip
+      tunnel_token          = data.terraform_remote_state.base.outputs.tunnel_token
+      discord_webhook_url   = var.discord_webhook_url
+      domain_name           = var.domain_name
+      user_instance         = var.user_instance
+      github_repo           = var.github_repo
+      cloudflared_version   = var.cloudflared_version
+      grafana_user          = var.grafana_admin_user
+      grafana_pass          = var.grafana_admin_password
+      db_internal_ip        = data.terraform_remote_state.database.outputs.db_internal_ip
+      minio_internal_ip     = data.terraform_remote_state.storage.outputs.minio_internal_ip
+      instance_display_name = var.instance_display_name
     }))
   }
 }
