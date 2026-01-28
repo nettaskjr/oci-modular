@@ -101,7 +101,17 @@ clients:
   - url: http://${k8s_dns_name}/loki/api/v1/push
 
 scrape_configs:
-- job_name: storage-logs
+- job_name: journal
+  journal:
+    max_age: 12h
+    labels:
+      job: systemd-journal
+      host: storage-minio
+  relabel_configs:
+    - source_labels: ['__journal__systemd_unit']
+      target_label: 'unit'
+
+- job_name: storage-files
   static_configs:
   - targets:
       - localhost
