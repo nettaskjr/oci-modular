@@ -80,4 +80,4 @@ systemctl enable minio
 systemctl start minio
 
 # Notificar Discord
-notify_discord "- ☁️ **Storage: MinIO UP!**\n- 📂 Console: http://[IP_ADDRESS]\n- 🔄 Pronto para uso como S3 interno."
+notify_discord "- ☁️ **Storage: MinIO UP!**\n"

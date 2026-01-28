@@ -59,6 +59,8 @@ if [ -d "$STACK_DIR" ]; then
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<user-home>>|$USER_HOME|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-user>>|${grafana_user}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-pass>>|${grafana_pass}|g" {} +
+  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-ip>>|${db_internal_ip}|g" {} +
+  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<storage-ip>>|${minio_internal_ip}|g" {} +
   
   chown -R ${user_instance}:${user_instance} $STACK_DIR
   
@@ -97,6 +99,6 @@ kubectl wait --for=condition=ready pod --all -n portainer --timeout=300s || noti
 kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || notify_discord "❌ Aviso: Nem todos os pods de Monitoramento ficaram prontos a tempo."
 
 # 6. Notificar Discord Final
-notify_discord "🚀 **Infra OCI Pronta (veja se tem alguma msg acima de falha)!**\n- ☸️ Kubernetes: K3s Up\n- 🐳 Portainer: https://portainer.${domain_name} (Pods Ready)\n- 📊 Grafana: https://grafana.${domain_name} (Pods Ready)\n\n_Deploy e Health Check finalizados com sucesso!_"
+notify_discord "🚀 **Infra OCI Pronta (veja se tem alguma msg de falha acima)!**\n- ☸️ Kubernetes: K3s Up\n- 🐳 Portainer: https://portainer.${domain_name} (Pods Ready)\n- 📊 Grafana: https://grafana.${domain_name} (Pods Ready)\n"
 
 echo "Configuração finalizada."
