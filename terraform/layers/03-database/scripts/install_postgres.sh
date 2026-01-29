@@ -51,11 +51,6 @@ echo "host    all             all             10.0.0.0/16            md5" >> /et
 sudo -u postgres psql -c "CREATE USER ${db_user} WITH PASSWORD '${db_password}';"
 sudo -u postgres psql -c "CREATE DATABASE ${db_name} OWNER ${db_user};"
 
-# Garantir diretório de logs para o Postgres
-mkdir -p /var/log/postgresql
-chown postgres:postgres /var/log/postgresql
-chmod 755 /var/log/postgresql
-
 # Reiniciar serviço
 systemctl restart postgresql
 systemctl enable postgresql
@@ -91,15 +86,11 @@ scrape_configs:
   relabel_configs:
     - source_labels: ['__journal__systemd_unit']
       target_label: 'unit'
-
-- job_name: postgresql-files
-  static_configs:
-  - targets:
-      - localhost
-    labels:
-      job: postgresql-logs
-      host: database-postgres
-      __path__: /var/log/postgresql/*.log
+    # Regra mágica: Se a unidade for o postgresql, mude o label 'job' para 'postgresql-logs'
+    - source_labels: ['unit']
+      regex: 'postgresql.*'
+      target_label: 'job'
+      replacement: 'postgresql-logs'
 
 - job_name: database-system-files
   static_configs:
