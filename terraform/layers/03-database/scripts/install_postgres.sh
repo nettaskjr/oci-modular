@@ -51,6 +51,11 @@ echo "host    all             all             10.0.0.0/16            md5" >> /et
 sudo -u postgres psql -c "CREATE USER ${db_user} WITH PASSWORD '${db_password}';"
 sudo -u postgres psql -c "CREATE DATABASE ${db_name} OWNER ${db_user};"
 
+# Garantir diretório de logs para o Postgres
+mkdir -p /var/log/postgresql
+chown postgres:postgres /var/log/postgresql
+chmod 755 /var/log/postgresql
+
 # Reiniciar serviço
 systemctl restart postgresql
 systemctl enable postgresql
@@ -87,7 +92,16 @@ scrape_configs:
     - source_labels: ['__journal__systemd_unit']
       target_label: 'unit'
 
-- job_name: database-files
+- job_name: postgresql-files
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: postgresql-logs
+      host: database-postgres
+      __path__: /var/log/postgresql/*.log
+
+- job_name: database-system-files
   static_configs:
   - targets:
       - localhost
@@ -95,12 +109,6 @@ scrape_configs:
       job: system-logs
       host: database-postgres
       __path__: /var/log/*.log
-  - targets:
-      - localhost
-    labels:
-      job: postgresql-logs
-      host: database-postgres
-      __path__: /var/log/postgresql/*.log
 EOF
 
 # Criar serviço Systemd para o Promtail
@@ -121,7 +129,7 @@ EOF
 
 systemctl daemon-reload
 systemctl enable promtail
-systemctl start promtail
+systemctl restart promtail
 
 # Notificar Discord sobre Database UP
 notify_discord "- 🛢️ **Database: PostgreSQL UP! (Logs OK)**"
