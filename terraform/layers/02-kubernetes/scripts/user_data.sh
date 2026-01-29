@@ -61,6 +61,7 @@ if [ -d "$STACK_DIR" ]; then
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-pass>>|${grafana_pass}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-ip>>|${db_internal_ip}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<storage-ip>>|${minio_internal_ip}|g" {} +
+  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<k8s-internal-dns>>|${instance_display_name}.public.mainvcn.oraclevcn.com|g" {} +
   
   chown -R ${user_instance}:${user_instance} $STACK_DIR
   
@@ -89,24 +90,6 @@ if [ -d "$STACK_DIR" ]; then
   
   echo "#### Aplicando Monitoramento..."
   kubectl apply -f $STACK_DIR/k8s-monitoring/
-
-  echo "#### Expondo Loki endpoint..."
-  cat <<EOF | kubectl apply -f -
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: loki-external
-  namespace: monitoring
-spec:
-  entryPoints:
-    - web
-  routes:
-  - match: Host(\`loki.${domain_name}\`) || Host(\`${instance_display_name}.public.mainvcn.oraclevcn.com\`)
-    kind: Rule
-    services:
-    - name: loki
-      port: 3100
-EOF
 else
   echo "Repositório de Stack não encontrado."
 fi
@@ -117,6 +100,6 @@ kubectl wait --for=condition=ready pod --all -n portainer --timeout=300s || noti
 kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || notify_discord "❌ Aviso: Nem todos os pods de Monitoramento ficaram prontos a tempo."
 
 # 6. Notificar Discord Final
-notify_discord "🚀 **Infra OCI Pronta (veja se tem alguma msg de falha acima)!**\n- ☸️ Kubernetes: K3s Up\n- 🐳 Portainer: https://portainer.${domain_name} (Pods Ready)\n- 📊 Grafana: https://grafana.${domain_name} (Pods Ready)"
+notify_discord "🚀 **Infra OCI Pronta (veja se tem alguma msg de falha acima)!**\n- ☸️ Kubernetes: K3s Up\n- 🐳 Portainer: https://portainer.${domain_name} (Pods Ready)\n- 📊 Grafana: https://grafana.${domain_name} (Pods and Infra Ready)"
 
 echo "Configuração finalizada."
