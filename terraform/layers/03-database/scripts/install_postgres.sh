@@ -86,9 +86,12 @@ scrape_configs:
   relabel_configs:
     - source_labels: ['__journal__systemd_unit']
       target_label: 'unit'
-    # Regra mágica: Se a unidade for o postgresql, mude o label 'job' para 'postgresql-logs'
-    - source_labels: ['unit']
-      regex: 'postgresql.*'
+    - source_labels: ['__journal_syslog_identifier']
+      target_label: 'syslog_identifier'
+    # Regra Resiliente: Se qualquer campo (Unit, ID ou Comm) contiver 'postgres', vira 'postgresql-logs'
+    - source_labels: ['__journal__systemd_unit', '__journal_syslog_identifier', '__journal__comm']
+      separator: ';'
+      regex: '.*postgres.*'
       target_label: 'job'
       replacement: 'postgresql-logs'
 

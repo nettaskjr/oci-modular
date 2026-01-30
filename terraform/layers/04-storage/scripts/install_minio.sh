@@ -110,9 +110,12 @@ scrape_configs:
   relabel_configs:
     - source_labels: ['__journal__systemd_unit']
       target_label: 'unit'
-    # Regra mágica: Se a unidade for o minio, mude o label 'job' para 'minio-logs'
-    - source_labels: ['unit']
-      regex: 'minio.*'
+    - source_labels: ['__journal_syslog_identifier']
+      target_label: 'syslog_identifier'
+    # Regra Resiliente: Se qualquer campo (Unit, ID ou Comm) contiver 'minio', vira 'minio-logs'
+    - source_labels: ['__journal__systemd_unit', '__journal_syslog_identifier', '__journal__comm']
+      separator: ';'
+      regex: '.*minio.*'
       target_label: 'job'
       replacement: 'minio-logs'
 
