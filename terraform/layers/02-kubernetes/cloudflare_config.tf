@@ -15,6 +15,12 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "auto_tunnel_config" 
       service  = "http://${data.terraform_remote_state.storage.outputs.minio_internal_ip}:9001"
     }
 
+    # Regra para CloudBeaver (Database GUI)
+    ingress_rule {
+      hostname = "db.${var.domain_name}"
+      service  = "http://${data.terraform_remote_state.database.outputs.db_internal_ip}:8978"
+    }
+
     # Regra genérica para HTTP/HTTPS (Web)
     ingress_rule {
       service = "http://localhost:80"

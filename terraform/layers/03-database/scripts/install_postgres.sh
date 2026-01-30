@@ -33,6 +33,19 @@ if command -v iptables > /dev/null; then
   fi
 fi
 
+# Instalar Dependências e Docker
+apt-get update
+apt-get install -y apt-transport-https ca-certificates curl software-properties-common gnupg lsb-release
+
+# Adicionar chave oficial do Docker
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+# Configurar repositório Docker
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io
+
 # Instalar Node Exporter para monitoramento
 apt-get install -y prometheus-node-exporter
 systemctl enable prometheus-node-exporter
@@ -41,8 +54,12 @@ systemctl start prometheus-node-exporter
 # Instalar PostgreSQL
 apt-get install -y postgresql postgresql-contrib
 
-# Configurar PostgreSQL para aceitar conexões externas (opcional, vamos controlar no firewall da OCI também)
+# Configurar PostgreSQL para aceitar conexões externas
 sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/*/main/postgresql.conf
+
+# FORÇAR LOGS PARA JOURNALD: Desativar coletor de arquivos para que o log vá para stderr/systemd
+sed -i "s/logging_collector = on/logging_collector = off/g" /etc/postgresql/*/main/postgresql.conf
+echo "log_destination = 'stderr'" >> /etc/postgresql/*/main/postgresql.conf
 
 # Permitir conexões apenas da rede interna da VCN (10.0.0.0/16)
 echo "host    all             all             10.0.0.0/16            md5" >> /etc/postgresql/*/main/pg_hba.conf
@@ -54,6 +71,15 @@ sudo -u postgres psql -c "CREATE DATABASE ${db_name} OWNER ${db_user};"
 # Reiniciar serviço
 systemctl restart postgresql
 systemctl enable postgresql
+
+# --- INSTALAÇÃO CLOUDBEAVER (GUI) ---
+echo "Instalando CloudBeaver via Docker..."
+mkdir -p /opt/cloudbeaver/workspace
+docker run -d --name cloudbeaver \
+  --restart always \
+  -p 8978:8978 \
+  -v /opt/cloudbeaver/workspace:/opt/cloudbeaver/workspace \
+  dbeaver/cloudbeaver:latest
 
 # Instalar Promtail para logs
 PROMTAIL_VERSION="2.9.2"
@@ -94,6 +120,15 @@ scrape_configs:
       regex: '.*postgres.*'
       target_label: 'job'
       replacement: 'postgresql-logs'
+
+- job_name: postgresql-files
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: postgresql-logs
+      host: database-postgres
+      __path__: /var/log/postgresql/*.log
 
 - job_name: database-system-files
   static_configs:
