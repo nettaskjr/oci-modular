@@ -48,6 +48,8 @@ resource "oci_core_instance" "ubuntu_instance" {
       db_user               = var.db_user
       minio_user            = var.minio_root_user
       minio_pass            = var.minio_root_password
+      db_volume_iqn         = oci_core_volume_attachment.db_volume_attachment.iqn
+      minio_volume_iqn      = oci_core_volume_attachment.minio_volume_attachment.iqn
       instance_display_name = var.instance_display_name
     }))
   }

@@ -75,21 +75,9 @@ setup_iscsi_volume() {
   fi
 }
 
-# Aqui precisaríamos dos IQNs, mas como eles mudam, vamos usar discovery genérico ou 
-# assumir que os volumes anexados via Terraform aparecem como /dev/sdb, /dev/sdc se não houver outros.
-# Modo seguro: Buscar IQNs dinamicamente via oci-metadata se disponível ou iscsiadm discovery.
-iscsiadm -m discoverydb -t sendtargets -p 169.254.2.2:3260 --discover
-IQNS=$(iscsiadm -m node | awk '{print $2}')
-
-INDEX=0
-for IQN in $IQNS; do
-  if [ "$INDEX" -eq 0 ]; then
-    setup_iscsi_volume "$IQN" "/mnt/db-vol"
-  else
-    setup_iscsi_volume "$IQN" "/mnt/minio-vol"
-  fi
-  INDEX=$((INDEX + 1))
-done
+# Configuração Explícita (Vinda do Terraform)
+setup_iscsi_volume "${db_volume_iqn}" "/mnt/db-vol"
+setup_iscsi_volume "${minio_volume_iqn}" "/mnt/minio-vol"
 
 # 5. GitOps: Clonar Repositório de Stack e instalacao dos apps via manifestos
 STACK_DIR="$USER_HOME/.stack"
