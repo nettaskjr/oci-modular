@@ -19,6 +19,13 @@ resource "oci_core_instance" "ubuntu_instance" {
     memory_in_gbs = var.instance_memory_in_gbs
   }
 
+  agent_config {
+    plugins_config {
+      desired_state = "ENABLED"
+      name          = "Block Volume Management"
+    }
+  }
+
   create_vnic_details {
     subnet_id        = data.terraform_remote_state.base.outputs.public_subnet_id
     display_name     = var.instance_display_name
@@ -48,8 +55,6 @@ resource "oci_core_instance" "ubuntu_instance" {
       db_user               = var.db_user
       minio_user            = var.minio_root_user
       minio_pass            = var.minio_root_password
-      db_volume_iqn         = oci_core_volume_attachment.db_volume_attachment.iqn
-      minio_volume_iqn      = oci_core_volume_attachment.minio_volume_attachment.iqn
       instance_display_name = var.instance_display_name
     }))
   }
@@ -62,15 +67,17 @@ data "oci_identity_availability_domains" "ads" {
 # --- ANEXAÇÃO DE VOLUMES PERSISTENTES (CAMADA 01b-VOLUMES) ---
 
 resource "oci_core_volume_attachment" "db_volume_attachment" {
-  attachment_type = "iscsi"
-  instance_id     = oci_core_instance.ubuntu_instance.id
-  volume_id       = data.terraform_remote_state.volumes.outputs.db_volume_id
-  display_name    = "db-vol-attachment"
+  attachment_type                   = "iscsi"
+  instance_id                       = oci_core_instance.ubuntu_instance.id
+  volume_id                         = data.terraform_remote_state.volumes.outputs.db_volume_id
+  display_name                      = "db-vol-attachment"
+  is_agent_auto_iscsi_login_enabled = true
 }
 
 resource "oci_core_volume_attachment" "minio_volume_attachment" {
-  attachment_type = "iscsi"
-  instance_id     = oci_core_instance.ubuntu_instance.id
-  volume_id       = data.terraform_remote_state.volumes.outputs.minio_volume_id
-  display_name    = "minio-vol-attachment"
+  attachment_type                   = "iscsi"
+  instance_id                       = oci_core_instance.ubuntu_instance.id
+  volume_id                         = data.terraform_remote_state.volumes.outputs.minio_volume_id
+  display_name                      = "minio-vol-attachment"
+  is_agent_auto_iscsi_login_enabled = true
 }

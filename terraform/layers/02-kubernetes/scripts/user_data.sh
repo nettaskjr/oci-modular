@@ -48,36 +48,44 @@ cp /etc/rancher/k3s/k3s.yaml $USER_HOME/.kube/config
 chown -R ${user_instance}:${user_instance} $USER_HOME/.kube
 echo "export KUBECONFIG=$USER_HOME/.kube/config" >> $USER_HOME/.bashrc
 
-# 4. Configuração de Volumes iSCSI (Persistent Storage)
-echo "Configurando volumes iSCSI..."
-apt-get install -y open-iscsi
-service open-iscsi start
+# 4. Configuração de Volumes Persistentes (Auto-login via OCI Agent)
+echo "Aguardando volumes extra (Agent login)..."
+# O Oracle Cloud Agent faz o login iscsi automaticamente se habilitado no Terraform.
+# Vamos detectar os discos pelos tamanhos definidos: 50GB (DB) e 100GB (MinIO).
 
-# Função para montar volume iSCSI por IQN (padrão OCI)
-setup_iscsi_volume() {
-  local IQN=$1
+mount_by_size() {
+  local TARGET_SIZE=$1
   local MOUNT_POINT=$2
+  local TIMEOUT=120
+  local SECONDS=0
   
-  echo "Tentando login iSCSI: $IQN"
-  iscsiadm -m discoverydb -t sendtargets -p 169.254.2.2:3260 --discover || true
-  iscsiadm -m node -T "$IQN" -p 169.254.2.2:3260 -l || true
+  echo "Procurando disco de $${TARGET_SIZE}GB para $${MOUNT_POINT}..."
   
-  # Aguardar device aparecer
-  sleep 5
-  DEV=$(ls -l /dev/disk/by-path/*"$IQN"* | head -n 1 | awk '{print $NF}' | sed 's|../../|/dev/|')
+  while [ $SECONDS -lt $TIMEOUT ]; do
+    # lsblk retorna tamanho em G. Ex: 50G, 100G.
+    DEV=$(lsblk -bndo NAME,SIZE | awk -v size="$${TARGET_SIZE}" '$2 == size*1024*1024*1024 {print "/dev/"$1}' | head -n 1)
+    
+    if [ -n "$DEV" ]; then
+      echo "Disco de $${TARGET_SIZE}GB encontrado em $${DEV}. Montando..."
+      mkdir -p "$MOUNT_POINT"
+      blkid "$DEV" || mkfs.ext4 -L "$(basename $MOUNT_POINT)" "$DEV"
+      mount "$DEV" "$MOUNT_POINT" || true
+      echo "$DEV $MOUNT_POINT ext4 defaults,_netdev 0 2" >> /etc/fstab
+      return 0
+    fi
+    sleep 5
+    SECONDS=$((SECONDS+5))
+  done
   
-  if [ -n "$DEV" ]; then
-    echo "Formatando e montando $DEV em $MOUNT_POINT..."
-    mkdir -p "$MOUNT_POINT"
-    blkid "$DEV" || mkfs.ext4 -L "$(basename $MOUNT_POINT)" "$DEV"
-    mount "$DEV" "$MOUNT_POINT" || true
-    echo "$DEV $MOUNT_POINT ext4 defaults,_netdev 0 2" >> /etc/fstab
-  fi
+  echo "ERRO: Disco de $${TARGET_SIZE}GB não encontrado após $${TIMEOUT}s"
+  return 1
 }
 
-# Configuração Explícita (Vinda do Terraform)
-setup_iscsi_volume "${db_volume_iqn}" "/mnt/db-vol"
-setup_iscsi_volume "${minio_volume_iqn}" "/mnt/minio-vol"
+# Tenta montar os volumes
+mount_by_size 50 "/mnt/db-vol" || true
+mount_by_size 100 "/mnt/minio-vol" || true
+
+# Configurações Explícitas removidas para evitar ciclos de dependência
 
 # 5. GitOps: Clonar Repositório de Stack e instalacao dos apps via manifestos
 STACK_DIR="$USER_HOME/.stack"
