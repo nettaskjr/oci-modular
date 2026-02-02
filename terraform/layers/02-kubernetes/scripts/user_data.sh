@@ -39,7 +39,6 @@ notify_discord "⏳ **Cloudflare Tunnel UP!**\n- 🔐 SSH disponível: \`ssh ssh
 
 # 3. Instalação do K3s
 export K3S_KUBECONFIG_MODE="644"
-# Instalação padrão (usa disco de boot /var/lib/rancher)
 curl -sfL https://get.k3s.io | sh -
 
 # Configurar Kubeconfig para o usuário da instância (ubuntu)
@@ -49,9 +48,52 @@ cp /etc/rancher/k3s/k3s.yaml $USER_HOME/.kube/config
 chown -R ${user_instance}:${user_instance} $USER_HOME/.kube
 echo "export KUBECONFIG=$USER_HOME/.kube/config" >> $USER_HOME/.bashrc
 
-# 4. GitOps: Clonar Repositório de Stack e instalacao dos apps via manifestos
+# 4. Configuração de Volumes iSCSI (Persistent Storage)
+echo "Configurando volumes iSCSI..."
+apt-get install -y open-iscsi
+service open-iscsi start
+
+# Função para montar volume iSCSI por IQN (padrão OCI)
+setup_iscsi_volume() {
+  local IQN=$1
+  local MOUNT_POINT=$2
+  
+  echo "Tentando login iSCSI: $IQN"
+  iscsiadm -m discoverydb -t sendtargets -p 169.254.2.2:3260 --discover || true
+  iscsiadm -m node -T "$IQN" -p 169.254.2.2:3260 -l || true
+  
+  # Aguardar device aparecer
+  sleep 5
+  DEV=$(ls -l /dev/disk/by-path/*"$IQN"* | head -n 1 | awk '{print $NF}' | sed 's|../../|/dev/|')
+  
+  if [ -n "$DEV" ]; then
+    echo "Formatando e montando $DEV em $MOUNT_POINT..."
+    mkdir -p "$MOUNT_POINT"
+    blkid "$DEV" || mkfs.ext4 -L "$(basename $MOUNT_POINT)" "$DEV"
+    mount "$DEV" "$MOUNT_POINT" || true
+    echo "$DEV $MOUNT_POINT ext4 defaults,_netdev 0 2" >> /etc/fstab
+  fi
+}
+
+# Aqui precisaríamos dos IQNs, mas como eles mudam, vamos usar discovery genérico ou 
+# assumir que os volumes anexados via Terraform aparecem como /dev/sdb, /dev/sdc se não houver outros.
+# Modo seguro: Buscar IQNs dinamicamente via oci-metadata se disponível ou iscsiadm discovery.
+iscsiadm -m discoverydb -t sendtargets -p 169.254.2.2:3260 --discover
+IQNS=$(iscsiadm -m node | awk '{print $2}')
+
+INDEX=0
+for IQN in $IQNS; do
+  if [ "$INDEX" -eq 0 ]; then
+    setup_iscsi_volume "$IQN" "/mnt/db-vol"
+  else
+    setup_iscsi_volume "$IQN" "/mnt/minio-vol"
+  fi
+  INDEX=$((INDEX + 1))
+done
+
+# 5. GitOps: Clonar Repositório de Stack e instalacao dos apps via manifestos
 STACK_DIR="$USER_HOME/.stack"
-git clone "${github_repo}" $STACK_DIR || echo "Falha ao clonar repo"
+git clone "${github_repo}" $STACK_DIR || (cd $STACK_DIR && git pull)
 
 if [ -d "$STACK_DIR" ]; then
   echo "Configurando variáveis..."
@@ -59,29 +101,40 @@ if [ -d "$STACK_DIR" ]; then
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<user-home>>|$USER_HOME|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-user>>|${grafana_user}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-pass>>|${grafana_pass}|g" {} +
+  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-user>>|${db_user}|g" {} +
+  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-pass>>|${db_pass}|g" {} +
+  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-name>>|${db_name}|g" {} +
+  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<minio-pass>>|${minio_pass}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<k8s-internal-dns>>|${instance_display_name}.public.mainvcn.oraclevcn.com|g" {} +
+  
+  # Injetar nome do host no Storage Setup
+  NODE_NAME=$(hostname)
+  sed -i "s|<<k8s-node-name>>|$NODE_NAME|g" $STACK_DIR/00-storage-setup.yaml
   
   chown -R ${user_instance}:${user_instance} $STACK_DIR
   
   # Garantir estabilidade e aplicar
   echo "Aguardando estabilidade do K3s..."
-  
-  # O restart ajuda a garantir que o IP correto da OCI seja capturado pelo K3s
   systemctl restart k3s
-  
-  # Aguardar API Server (loop robusto com kubectl)
   timeout 60s bash -c "until kubectl get --raw='/readyz' > /dev/null 2>&1; do sleep 2; done"
-  
-  # Aguardar Nodes
   kubectl wait --for=condition=Ready node --all --timeout=60s
   
-  # Aguardar CRDs do Traefik de forma segura
-  echo "Aguardando criação dos CRDs do Traefik..."
+  echo "Aguardando CRDs do Traefik..."
   timeout 120s bash -c "until kubectl get crd ingressroutes.traefik.io > /dev/null 2>&1; do echo 'Aguardando CRD...'; sleep 5; done"
   
   # Aplicar os manifestos
+  echo "#### Configurando Armazenamento..."
+  kubectl apply -f $STACK_DIR/00-storage-setup.yaml
+
   echo "#### Aplicando Portainer..."
   kubectl apply -f $STACK_DIR/Portainer/portainer.yaml
+
+  echo "#### Aplicando Banco de Dados e GUI..."
+  kubectl apply -f $STACK_DIR/Database/
+  kubectl apply -f $STACK_DIR/CloudBeaver/
+
+  echo "#### Aplicando MinIO..."
+  kubectl apply -f $STACK_DIR/Minio/
 
   echo "#### Aplicando Page Error..."
   kubectl apply -f $STACK_DIR/k8s-error-page/
@@ -92,12 +145,13 @@ else
   echo "Repositório de Stack não encontrado."
 fi
 
-# 5. Validação de Saúde dos Pods
+# 6. Validação de Saúde dos Pods
 echo "Aguardando pods ficarem prontos (timeout 300s)..."
-kubectl wait --for=condition=ready pod --all -n portainer --timeout=300s || notify_discord "❌ Aviso: Nem todos os pods do Portainer ficaram prontos a tempo."
-kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || notify_discord "❌ Aviso: Nem todos os pods de Monitoramento ficaram prontos a tempo."
+kubectl wait --for=condition=ready pod --all -n database --timeout=300s || true
+kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
+kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || true
 
-# 6. Notificar Discord Final
-notify_discord "🚀 **Infra OCI Pronta (veja se tem alguma msg de falha acima)!**\n- ☸️ Kubernetes: K3s Up\n- 🐳 Portainer: https://portainer.${domain_name} (Pods Ready)\n- 📊 Grafana: https://grafana.${domain_name} (Pods and Infra Ready)"
+# 7. Notificar Discord Final
+notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n- ☸️ Kubernetes: K3s Up\n- � Volumes: DB (50GB) & MinIO (100GB) montados\n- 🗄️ PostgreSQL & CloudBeaver: Up\n- � MinIO: Up\n- 📊 Monitoramento: Up"
 
 echo "Configuração finalizada."

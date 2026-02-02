@@ -43,6 +43,11 @@ resource "oci_core_instance" "ubuntu_instance" {
       cloudflared_version   = var.cloudflared_version
       grafana_user          = var.grafana_admin_user
       grafana_pass          = var.grafana_admin_password
+      db_pass               = var.db_password
+      db_name               = var.db_name
+      db_user               = var.db_user
+      minio_user            = var.minio_root_user
+      minio_pass            = var.minio_root_password
       instance_display_name = var.instance_display_name
     }))
   }
