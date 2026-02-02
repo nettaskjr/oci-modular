@@ -43,8 +43,6 @@ resource "oci_core_instance" "ubuntu_instance" {
       cloudflared_version   = var.cloudflared_version
       grafana_user          = var.grafana_admin_user
       grafana_pass          = var.grafana_admin_password
-      db_internal_ip        = data.terraform_remote_state.database.outputs.db_internal_ip
-      minio_internal_ip     = data.terraform_remote_state.storage.outputs.minio_internal_ip
       instance_display_name = var.instance_display_name
     }))
   }
@@ -53,4 +51,19 @@ resource "oci_core_instance" "ubuntu_instance" {
 # Data source para obter Availability Domains
 data "oci_identity_availability_domains" "ads" {
   compartment_id = var.tenancy_ocid
+}
+# --- ANEXAÇÃO DE VOLUMES PERSISTENTES (CAMADA 01b-VOLUMES) ---
+
+resource "oci_core_volume_attachment" "db_volume_attachment" {
+  attachment_type = "iscsi"
+  instance_id     = oci_core_instance.ubuntu_instance.id
+  volume_id       = data.terraform_remote_state.volumes.outputs.db_volume_id
+  display_name    = "db-vol-attachment"
+}
+
+resource "oci_core_volume_attachment" "minio_volume_attachment" {
+  attachment_type = "iscsi"
+  instance_id     = oci_core_instance.ubuntu_instance.id
+  volume_id       = data.terraform_remote_state.volumes.outputs.minio_volume_id
+  display_name    = "minio-vol-attachment"
 }

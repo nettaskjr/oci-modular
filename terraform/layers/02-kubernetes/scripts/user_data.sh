@@ -59,8 +59,6 @@ if [ -d "$STACK_DIR" ]; then
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<user-home>>|$USER_HOME|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-user>>|${grafana_user}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-pass>>|${grafana_pass}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-ip>>|${db_internal_ip}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<storage-ip>>|${minio_internal_ip}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<k8s-internal-dns>>|${instance_display_name}.public.mainvcn.oraclevcn.com|g" {} +
   
   chown -R ${user_instance}:${user_instance} $STACK_DIR

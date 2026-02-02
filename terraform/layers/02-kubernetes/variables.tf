@@ -20,3 +20,6 @@ variable "discord_webhook_url" { default = "" }
 variable "cloudflared_version" { default = "2025.11.1" }
 variable "grafana_admin_user" { default = "admin" }
 variable "grafana_admin_password" { sensitive = true }
+variable "db_password" { sensitive = true }
+variable "minio_root_user" { default = "admin" }
+variable "minio_root_password" { sensitive = true }

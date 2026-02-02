@@ -12,20 +12,13 @@ data "terraform_remote_state" "base" {
   }
 }
 
-data "terraform_remote_state" "database" {
+data "terraform_remote_state" "volumes" {
   backend = "s3"
   config = {
     bucket = var.state_bucket_name
-    key    = "terraform-state-oci/database.tfstate"
+    key    = "terraform-state-oci/volumes.tfstate"
     region = "us-east-1"
   }
 }
 
-data "terraform_remote_state" "storage" {
-  backend = "s3"
-  config = {
-    bucket = var.state_bucket_name
-    key    = "terraform-state-oci/storage.tfstate"
-    region = "us-east-1"
-  }
-}
+# Fim do arquivo
