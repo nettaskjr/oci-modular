@@ -5,11 +5,13 @@ set -e
 # Log de execução para debug
 exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-# Função de Notificação Discord
+# Função de Notificação Discord (Geração de JSON robusta via Python)
 notify_discord() {
   local MESSAGE="$1"
   if [ -n "${discord_webhook_url}" ]; then
-    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${discord_webhook_url}" || true
+    # Usa python3 (nativo no Ubuntu) para gerar JSON perfeito
+    local JSON_BODY=$(python3 -c "import json, sys; print(json.dumps({'content': sys.argv[1]}))" "$MESSAGE")
+    curl -H "Content-Type: application/json" -d "$JSON_BODY" "${discord_webhook_url}" || true
   fi
 }
 

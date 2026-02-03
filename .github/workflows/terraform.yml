@@ -14,7 +14,6 @@ on:
         type: choice
         options:
           - apply
-          - destroy
 
 jobs:
   terraform:
@@ -93,17 +92,10 @@ jobs:
             -backend-config="bucket=$TF_VAR_state_bucket_name" \
             -backend-config="region=us-east-1"
 
-      - name: Terraform Init DB
-        id: init_db
+      - name: Terraform Init Volumes
+        id: init_volumes
         run: |
-          terraform -chdir=terraform/layers/03-database init \
-            -backend-config="bucket=$TF_VAR_state_bucket_name" \
-            -backend-config="region=us-east-1"
-
-      - name: Terraform Init Storage
-        id: init_storage
-        run: |
-          terraform -chdir=terraform/layers/04-storage init \
+          terraform -chdir=terraform/layers/01b-volumes init \
             -backend-config="bucket=$TF_VAR_state_bucket_name" \
             -backend-config="region=us-east-1"
 
@@ -118,8 +110,7 @@ jobs:
         id: validate
         run: |
           terraform -chdir=terraform/layers/01-base-infra validate -no-color
-          terraform -chdir=terraform/layers/03-database validate -no-color
-          terraform -chdir=terraform/layers/04-storage validate -no-color
+          terraform -chdir=terraform/layers/01b-volumes validate -no-color
           terraform -chdir=terraform/layers/02-kubernetes validate -no-color
 
       - name: Terraform Plan
@@ -127,8 +118,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           terraform -chdir=terraform/layers/01-base-infra plan -no-color -input=false -var-file="../../../terraform.auto.tfvars"
-          terraform -chdir=terraform/layers/03-database plan -no-color -input=false -var-file="../../../terraform.auto.tfvars"
-          terraform -chdir=terraform/layers/04-storage plan -no-color -input=false -var-file="../../../terraform.auto.tfvars"
+          terraform -chdir=terraform/layers/01b-volumes plan -no-color -input=false -var-file="../../../terraform.auto.tfvars"
           terraform -chdir=terraform/layers/02-kubernetes plan -no-color -input=false -var-file="../../../terraform.auto.tfvars"
         continue-on-error: true
 
@@ -136,27 +126,17 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name == 'push' && github.event.inputs.terraform_action != 'destroy'
         run: |
           terraform -chdir=terraform/layers/01-base-infra apply -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-          terraform -chdir=terraform/layers/03-database apply -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-          terraform -chdir=terraform/layers/04-storage apply -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
+          terraform -chdir=terraform/layers/01b-volumes apply -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
           terraform -chdir=terraform/layers/02-kubernetes apply -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
 
-      # Destroy full da infraestrutura
+      # Action da infraestrutura via Dispatch
       - name: Terraform Dispatch Action
         if: github.event_name == 'workflow_dispatch'
         run: |
           ACTION="${{ github.event.inputs.terraform_action }}"
-          if [ "$ACTION" == "destroy" ]; then
-            echo "⚠️ Executando Destroy COMPLETO da infraestrutura..."
-            terraform -chdir=terraform/layers/02-kubernetes destroy -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-            terraform -chdir=terraform/layers/04-storage destroy -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-            terraform -chdir=terraform/layers/03-database destroy -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-            terraform -chdir=terraform/layers/01-base-infra destroy -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-          else
-            terraform -chdir=terraform/layers/01-base-infra $ACTION -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-            terraform -chdir=terraform/layers/03-database $ACTION -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-            terraform -chdir=terraform/layers/04-storage $ACTION -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-            terraform -chdir=terraform/layers/02-kubernetes $ACTION -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
-          fi
+          terraform -chdir=terraform/layers/01-base-infra $ACTION -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
+          terraform -chdir=terraform/layers/01b-volumes $ACTION -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
+          terraform -chdir=terraform/layers/02-kubernetes $ACTION -auto-approve -input=false -var-file="../../../terraform.auto.tfvars"
 
       - name: Notify Discord
         if: always() && (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
