@@ -51,8 +51,7 @@ terraform -chdir=terraform/layers/0X-nome apply \
 
 
 A fazer
-1) Excluir destroy do workflow de destruição de instância
-2) validar se os logs dos namespaces estão sendo coletados
-2.1) database e minio
-3) 
+a) criar página de manutencao no cloudflare igual a do kubernetes
+b) criar arquivo de funcoes shell com as funcoes do init
+c) 
 

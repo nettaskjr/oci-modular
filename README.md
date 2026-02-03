@@ -1,126 +1,63 @@
-# 🚀 OCI Cloud-Native Always Free (Arquitetura Modular)
+# 🚀 OCI Cloud-Native Always Free (Arquitetura Modular K8s)
 
 Este repositório contém uma infraestrutura profissional, modularizada e totalmente automatizada para a **Oracle Cloud Infrastructure (OCI)**, utilizando exclusivamente recursos do nível **Always Free**. 
 
-A solução utiliza **Terraform** para o provisionamento e **GitHub Actions** para o deploy contínuo (GitOps). O acesso é protegido por **Cloudflare Zero Trust**, eliminando a necessidade de portas públicas abertas.
+A solução utiliza **Terraform** para o provisionamento e **GitHub Actions** para o deploy contínuo (GitOps). O cluster Kubernetes consolidado centraliza todos os serviços, garantindo alta eficiência e persistência.
 
 ---
 
 ## 🏗️ Arquitetura do Projeto
 
-A infraestrutura é orquestrada em 4 camadas independentes, cada uma com seu próprio estado (`.tfstate`):
+A infraestrutura é orquestrada em 3 camadas independentes:
 
 1.  **`01-base-infra`**: Rede (VCN, Subnets), Security Lists e o Core do Cloudflare Tunnel.
-2.  **`03-database`**: Instância AMD dedicada com PostgreSQL 16 (Pilar de Persistência).
-3.  **`04-storage`**: Instância AMD dedicada com MinIO (API S3 compatível) e 100GB de storage.
-4.  **`02-kubernetes`**: Cluster K3s rodando em instância ARM (4 OCPU / 24GB RAM).
+2.  **`01b-volumes`**: Gerenciamento de volumes em bloco (iSCSI) para persistência de dados.
+3.  **`02-kubernetes`**: Cluster K3s rodando em instância ARM (4 OCPU / 24GB RAM). Centraliza DB, Storage e Apps.
 
 ---
 
-## � Passo a Passo de Configuração
+## 🛠️ Serviços Consolidados no K8s
+
+*   **PostgreSQL 16**: Banco de dados relacional com volume persistente de 50GB.
+*   **MinIO**: Storage S3-compatible com volume persistente de 100GB.
+*   **CloudBeaver**: Interface web para gerenciamento de banco de dados (auto-conectado).
+*   **Portainer**: Gestão visual de containers e cluster.
+*   **Monitoramento**: Stack completa (Grafana, Prometheus, Loki) no namespace `monitoring`.
+
+---
+
+## 📋 Passo a Passo de Configuração
 
 ### 1. Preparando o Backend AWS (S3 + IAM)
-O Terraform guarda os estados da infraestrutura em arquivos `.tfstate`. Usaremos um Bucket S3 para centralizar esse controle.
+O Terraform guarda os estados da infraestrutura em arquivos `.tfstate` em um Bucket S3.
 
 #### Criar o Bucket S3
 1.  Acesse o Console AWS > **S3**.
 2.  **Name:** Escolha um nome único (ex: `terraform-state-seu-dominio`).
-3.  **Region:** `us-east-1` (Recomendado para compatibilidade).
-4.  **Block Public Access:** ☑️ Marque **"Block all public access"** (Crítico!).
-5.  **Versioning:** ☑️ **Enable** (Proteção contra corrupção de estado).
+3.  **Versioning:** ☑️ **Enable** (Proteção contra corrupção de estado).
 
-#### Criar Usuário IAM (Chaves de Acesso)
-1.  Vá em Console AWS > **IAM** > **Users** > **Create user** (ex: `terraform-bot`).
-2.  Anexe a política **Attach policies directly** com permissão para o bucket:
-    ```json
-    {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Action": ["s3:ListBucket", "s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-                "Resource": ["arn:aws:s3:::SEU_BUCKET_NAME", "arn:aws:s3:::SEU_BUCKET_NAME/*"]
-            }
-        ]
-    }
-    ```
-3.  Em **Security credentials**, crie uma **Access Key** e guarde o `Access Key ID` e o `Secret Access Key`.
+### 2. Configurando o GitHub (Secrets)
+Adicione os segredos em **Settings** > **Secrets and variables** > **Actions**:
 
----
-
-### 2. Configurando o GitHub (Secrets e Variáveis)
-
-No seu repositório GitHub, vá em **Settings** > **Secrets and variables** > **Actions** e adicione os seguintes segredos:
-
-#### Secrets de Conectividade e OCI
 | Secret | Descrição |
 | :--- | :--- |
-| `AWS_ACCESS_KEY_ID` | Chave de acesso do usuário IAM AWS |
-| `AWS_SECRET_ACCESS_KEY` | Segredo da chave IAM AWS |
-| `OCI_TENANCY_OCID` | OCID do Tenancy (Console OCI > Perfil) |
-| `OCI_USER_OCID` | OCID do Usuário (Console OCI > Identity) |
-| `OCI_FINGERPRINT` | Fingerprint da API Key (OCI User > API Keys) |
-| `OCI_PRIVATE_KEY_PEM` | Conteúdo do arquivo `.pem` da API Key OCI |
-| `OCI_COMPARTMENT_OCID` | OCID do Compartimento onde os recursos serão criados |
-| `TF_STATE_BUCKET_NAME`| Nome do bucket S3 criado no passo 1 |
-
-#### Secrets de Aplicação e Monitoramento
-| Secret | Descrição |
-| :--- | :--- |
-| `CLOUDFLARE_API_TOKEN` | Token com permissões DNS e Account Tunnel |
-| `DISCORD_WEBHOOK_URL` | URL do Webhook do canal de avisos do Discord |
-| `SSH_PUBLIC_KEY` | Sua chave pública SSH (ex: conteúdo do `id_ed25519.pub`) |
-| `TF_VAR_GRAFANA_ADMIN_PASSWORD` | Senha inicial para o Grafana |
-| `DB_NAME` / `DB_USER` / `DB_PASSWORD` | Dados do PostgreSQL |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | Dados do Storage MinIO |
+| `OCI_TENANCY_OCID` | OCID do Tenancy |
+| `CLOUDFLARE_API_TOKEN`| Token DNS + Tunnel |
+| `DISCORD_WEBHOOK_URL` | URL para notificações de status |
+| `DB_PASSWORD` / `MINIO_ROOT_PASSWORD` | Senhas para os serviços core |
 
 ---
 
-### 3. Configuração do Código
+## 🚀 Execução e Deploy
 
-#### Variáveis Públicas (`terraform.auto.tfvars`)
-Edite este arquivo na raiz do projeto. Ele é a "fonte da verdade" para o seu domínio e região.
+### Automação Local (Tools)
+Utilize os scripts na pasta `tools/` para facilitar o gerenciamento:
 
-```hcl
-region                = "sa-saopaulo-1"
-domain_name           = "seu-dominio.com.br"
-cloudflare_zone_id    = "xxx..." 
-cloudflare_account_id = "xxx..." 
-github_repo           = "https://github.com/usuario/seu-repo-manifestos.git"
-state_bucket_name     = "nome-do-seu-bucket-s3"
-```
+*   **Deploy**: `./infra-apply.sh` (Aplica as 3 camadas na ordem correta).
+*   **Destruição**: `./infra-destroy.sh` (Menu interativo para destruir camadas específicas ou tudo).
 
----
-
-### 4. Execução e Deploy
-
-#### Via GitHub Actions (Recomendado)
-Faça um **Push** na branch `main`. O workflow irá orquestrar as camadas na ordem correta:
-1.  **Base-Infra**: Cria a rede e o túnel.
-2.  **Database**: Sobe o PostgreSQL (AMD Instance).
-3.  **Storage**: Sobe o MinIO 100GB (AMD Instance).
-4.  **Kubernetes**: Sobe o cluster K3s (ARM Instance) e instala os apps.
-
-#### Gerenciamento Manual (Local)
-Para cada camada em `terraform/layers/XX-nome`, execute:
-```bash
-terraform init -backend-config="bucket=$BUCKET" -backend-config="region=us-east-1"
-terraform apply -var-file="../../../terraform.tfvars" -var-file="../../../terraform.auto.tfvars"
-```
-
----
-
-## 🐳 Gerenciamento de Containers (Portainer)
-Acesso visual completo ao cluster Kubernetes.
-*   **URL:** `https://portainer.seu-dominio.com.br`
-
----
-
-## 📊 Observabilidade e Monitoramento
-Stack completa instalada no namespace `monitoring`:
-*   **Grafana**: Dashboards pré-instalados (Cluster, Nodes e Logs).
-*   **Prometheus / Loki**: Métricas e logs centralizados.
-*   **URL:** `https://grafana.seu-dominio.com.br`
+### Via GitHub Actions
+Faça um **Push** na branch `main`. O workflow irá validar e aplicar a infraestrutura automaticamente. Por segurança, a opção de **Destroy** só é permitida via script local.
 
 ---
 
@@ -138,23 +75,18 @@ Host ssh.seu-dominio.com.br
 
 ---
 
-## ⚡ Cheat Sheet: Comandos Úteis
-
-| Comando | Descrição |
-|---------|-----------|
-| `kubectl get pods -A` | Lista todos os pods no cluster. |
-| `kubectl logs -f [POD] -n [NS]` | Acompanha logs em tempo real. |
-| `kubectl rollout restart deploy portainer -n portainer` | Reinicia o Portainer (útil para erro de timeout de admin). |
-| `tail -f /var/log/user-data.log` | Verifica o progresso do boot nas instâncias. |
-| `sudo systemctl restart k3s` | Reinicia o Kubernetes no host. |
-| `nc -zv [IP_INTERNO] [PORTA]` | Testa conectividade entre camadas (K8s <-> DB). |
+## 📊 Observabilidade
+Acesse o Grafana para monitorar o consumo de CPU, Memória e o uso dos volumes de 50GB e 100GB.
+*   **URL:** `https://grafana.seu-dominio.com.br`
 
 ---
 
-### Estrutura de Diretórios Importantes
-*   `terraform/layers/`: Onde vive o coração modular da infraestrutura.
-*   `scripts/`: Scripts Bash otimizados para cada tipo de serviço (Postgres, MinIO, K3s).
-*   `.github/workflows/`: A inteligência da automação CI/CD.
+## ⚡ Cheat Sheet
+| Comando | Descrição |
+|---------|-----------|
+| `kubectl get pods -A` | Lista todos os pods no cluster. |
+| `tail -f /var/log/user-data.log` | Verifica o progresso do boot e montagem de discos. |
+| `kubectl get pvc -n database` | Verifica o status dos volumes persistentes. |
 
 ---
 *Mantido com ❤️ por [Nestor Junior](https://github.com/nettaskjr)*
