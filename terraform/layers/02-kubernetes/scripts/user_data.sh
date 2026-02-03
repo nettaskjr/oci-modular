@@ -15,15 +15,26 @@ notify_discord() {
   fi
 }
 
+# Função para aguardar o lock do APT
+wait_for_apt() {
+  echo "Aguardando liberação do lock do APT..."
+  while fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock /var/lib/dpkg/lock >/dev/null 2>&1 ; do
+    sleep 5
+  done
+  echo "Lock liberado!"
+}
+
 echo "Iniciando configuração da instância (Branch Main/Stateless)..."
 
 # 1. Atualização e Instalação de Pacotes Básicos
 export DEBIAN_FRONTEND=noninteractive
+wait_for_apt
 apt-get update -y
 apt-get install -y curl git ncdu
 
 # 2. Instalação e Configuração do Cloudflared
 echo "Instalando Cloudflared (${cloudflared_version})..."
+wait_for_apt
 URL="https://github.com/cloudflare/cloudflared/releases/download/${cloudflared_version}/cloudflared-linux-arm64.deb"
 
 if ! curl -L --fail --output cloudflared.deb "$URL"; then
