@@ -120,13 +120,13 @@ if [ -d "$STACK_DIR" ]; then
   
   # Aplicar os manifestos
   echo "#### Configurando Armazenamento..."
-  kubectl apply -f $STACK_DIR/00-storage-setup.yaml
+  kubectl apply -f $STACK_DIR/volumes/
 
   echo "#### Aplicando Portainer..."
-  kubectl apply -f $STACK_DIR/Portainer/portainer.yaml
+  kubectl apply -f $STACK_DIR/Portainer/
 
   echo "#### Aplicando Banco de Dados e GUI..."
-  kubectl apply -f $STACK_DIR/Database/
+  kubectl apply -f $STACK_DIR/Postgres/
   kubectl apply -f $STACK_DIR/CloudBeaver/
 
   echo "#### Aplicando MinIO..."
@@ -148,6 +148,15 @@ kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
 kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || true
 
 # 7. Notificar Discord Final
-notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n- ☸️ Kubernetes: K3s Up\n- � Volumes: DB (50GB) & MinIO (100GB) montados\n- 🗄️ PostgreSQL & CloudBeaver: Up\n- � MinIO: Up\n- 📊 Monitoramento: Up"
+notify_discord "🚀 **Infra OCI com Persistência Pronta!**
+
+☸️ **Kubernetes Status:**
+- 🐳 **Portainer:** https://portainer.${domain_name}
+- 📊 **Grafana:** https://grafana.${domain_name}
+- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}
+- ☁️ **MinIO Console:** https://minio.${domain_name}
+- 📦 **MinIO S3 API:** https://s3.${domain_name}
+
+✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
 
 echo "Configuração finalizada."
