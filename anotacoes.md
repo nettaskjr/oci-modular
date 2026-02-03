@@ -55,3 +55,4 @@ A fazer
 2) validar se os logs dos namespaces estão sendo coletados
 2.1) database e minio
 3) 
+

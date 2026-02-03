@@ -43,13 +43,45 @@ destroy_layer() {
   cd "$ROOT_DIR"
 }
 
-# Ordem Inversa de Execução (Respeitando Dependências)
-echo "🎬 Iniciando Destruição Completa da Infraestrutura..."
-
-destroy_layer "02-kubernetes"
-destroy_layer "01b-volumes"
-destroy_layer "01-base-infra"
-
+# --- MENU DE DESTRUIÇÃO ---
 echo "----------------------------------------------------------------"
-echo "🌋 INFRAESTRUTURA COMPLETAMENTE REMOVIDA! 🔌"
+echo "☢️  MENU DE DESTRUIÇÃO - OCI INFRA"
 echo "----------------------------------------------------------------"
+echo "Escolha a camada que deseja destruir:"
+
+COLUMNS=1
+options=("02-kubernetes" "01b-volumes" "01-base-infra" "TODOS (Destruição Total)" "Sair")
+PS3="Digite o número da opção: "
+
+select opt in "${options[@]}"
+do
+    case $opt in
+        "02-kubernetes")
+            destroy_layer "02-kubernetes"
+            break
+            ;;
+        "01b-volumes")
+            destroy_layer "01b-volumes"
+            break
+            ;;
+        "01-base-infra")
+            destroy_layer "01-base-infra"
+            break
+            ;;
+        "TODOS (Destruição Total)")
+            echo "⚠️  AVISO: Iniciando destruição completa em ordem reversa..."
+            destroy_layer "02-kubernetes"
+            destroy_layer "01b-volumes"
+            destroy_layer "01-base-infra"
+            echo "----------------------------------------------------------------"
+            echo "🌋 INFRAESTRUTURA COMPLETAMENTE REMOVIDA! 🔌"
+            echo "----------------------------------------------------------------"
+            break
+            ;;
+        "Sair")
+            echo "Operação cancelada."
+            exit 0
+            ;;
+        *) echo "Opção inválida $REPLY";;
+    esac
+done

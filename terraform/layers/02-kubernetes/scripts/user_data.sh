@@ -8,10 +8,10 @@ exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 # Função de Notificação Discord (Geração de JSON robusta via Python)
 notify_discord() {
   local MESSAGE="$1"
+  local SEPARADOR="-----------------------------------------"
+  curl -H "Content-Type: application/json" -d "{\"content\": \"$SEPARADOR\"}" "${discord_webhook_url}" || true
   if [ -n "${discord_webhook_url}" ]; then
-    # Usa python3 (nativo no Ubuntu) para gerar JSON perfeito
-    local JSON_BODY=$(python3 -c "import json, sys; print(json.dumps({'content': sys.argv[1]}))" "$MESSAGE")
-    curl -H "Content-Type: application/json" -d "$JSON_BODY" "${discord_webhook_url}" || true
+    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${discord_webhook_url}" || true
   fi
 }
 
@@ -147,6 +147,6 @@ kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
 kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || true
 
 # 7. Notificar Discord Final
-notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n\n☸️ **Kubernetes Status:**\n- �️ **Portainer:** https://portainer.${domain_name}\n- 📊 **Grafana:** https://grafana.${domain_name}\n- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}\n- 📦 **MinIO Console:** https://minio.${domain_name}\n- ☁️ **MinIO S3 API:** https://s3.${domain_name}\n\n✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
+notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n ☸️ **Kubernetes Status:**\n- 🐳 **Portainer:** https://portainer.${domain_name}\n- 📊 **Grafana:** https://grafana.${domain_name}\n- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}\n- 📦 **MinIO Console:** https://minio.${domain_name}\n- ☁️ **MinIO S3 API:** https://s3.${domain_name}\n\n✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
 
 echo "Configuração finalizada."
