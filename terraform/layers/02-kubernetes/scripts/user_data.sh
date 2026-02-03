@@ -102,10 +102,7 @@ if [ -d "$STACK_DIR" ]; then
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-name>>|${db_name}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<minio-pass>>|${minio_pass}|g" {} +
   find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<k8s-internal-dns>>|${instance_display_name}.public.mainvcn.oraclevcn.com|g" {} +
-  
-  # Injetar nome do host no Storage Setup
-  NODE_NAME=$(hostname)
-  sed -i "s|<<k8s-node-name>>|$NODE_NAME|g" $STACK_DIR/00-storage-setup.yaml
+  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<k8s-node-name>>|${instance_display_name}|g" {} +
   
   chown -R ${user_instance}:${user_instance} $STACK_DIR
   
@@ -148,15 +145,6 @@ kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
 kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || true
 
 # 7. Notificar Discord Final
-notify_discord "🚀 **Infra OCI com Persistência Pronta!**
-
-☸️ **Kubernetes Status:**
-- 🐳 **Portainer:** https://portainer.${domain_name}
-- 📊 **Grafana:** https://grafana.${domain_name}
-- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}
-- ☁️ **MinIO Console:** https://minio.${domain_name}
-- 📦 **MinIO S3 API:** https://s3.${domain_name}
-
-✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
+notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n\n☸️ **Kubernetes Status:**\n- �️ **Portainer:** https://portainer.${domain_name}\n- 📊 **Grafana:** https://grafana.${domain_name}\n- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}\n- 📦 **MinIO Console:** https://minio.${domain_name}\n- ☁️ **MinIO S3 API:** https://s3.${domain_name}\n\n✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
 
 echo "Configuração finalizada."

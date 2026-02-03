@@ -48,3 +48,10 @@ terraform -chdir=terraform/layers/0X-nome apply \
 ## ☁️ MinIO (S3 link)
 - **Endpoint:** `http://<IP_INTERNO>:9000`
 - **Console:** `http://<IP_INTERNO>:9001`
+
+
+A fazer
+1) Excluir destroy do workflow de destruição de instância
+2) validar se os logs dos namespaces estão sendo coletados
+2.1) database e minio
+3) 
