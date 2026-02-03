@@ -55,3 +55,21 @@ a) criar página de manutencao no cloudflare igual a do kubernetes
 b) criar arquivo de funcoes shell com as funcoes do init
 c) 
 
+Sim, com certeza você consegue ver o consumo dos volumes no Grafana! 📊🐘📦
+
+Como instalamos o node-exporter e o kube-state-metrics, o Prometheus já está coletando esses dados. Você pode visualizar de duas formas:
+
+1. Pelo Ponto de Montagem (Via Node Exporter)
+Esta é a forma mais direta, pois monitora o disco no nível do sistema operacional. No Grafana, você pode usar estas métricas:
+
+Espaço Livre: node_filesystem_avail_bytes{mountpoint="/mnt/db-vol"}
+Espaço Total: node_filesystem_size_bytes{mountpoint="/mnt/db-vol"}
+Uso em %: 
+(1 - node_filesystem_avail_bytes{mountpoint="/mnt/db-vol"} / node_filesystem_size_bytes{mountpoint="/mnt/db-vol"}) * 100
+2. Pelo PVC (Via Kube State Metrics)
+Esta forma monitora a saúde do volume dentro do Kubernetes:
+
+kubelet_volume_stats_used_bytes{persistentvolumeclaim="postgres-pvc"}
+💡 Dica de Dashboard:
+Recomendo importar o dashboard "Node Exporter Full" (ID: 1860) no seu Grafana. Ele já vem com todos os gráficos de disco prontos e você verá as partições /mnt/db-vol e /mnt/minio-vol listadas lá automaticamente.
+
