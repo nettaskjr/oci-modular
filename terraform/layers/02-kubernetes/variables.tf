@@ -16,6 +16,7 @@ variable "boot_volume_size_in_gbs" { default = 50 }
 variable "cloudflare_api_token" { sensitive = true }
 variable "domain_name" {}
 variable "github_repo" {}
+variable "github_repo_cliente" {}
 variable "discord_webhook_url" { default = "" }
 variable "cloudflared_version" { default = "2025.11.1" }
 variable "grafana_admin_user" { default = "admin" }

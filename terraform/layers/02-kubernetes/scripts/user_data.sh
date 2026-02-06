@@ -100,24 +100,73 @@ mount_by_size 100 "/mnt/minio-vol" || true
 
 # Configurações Explícitas removidas para evitar ciclos de dependência
 
-# 5. GitOps: Clonar Repositório de Stack e instalacao dos apps via manifestos
+# 5. GitOps: Clonar Repositórios e instalacao dos apps via manifestos
 STACK_DIR="$USER_HOME/.stack"
+CLIENT_DIR="$USER_HOME/.stack-cliente"
+
+echo "Clonando repositórios..."
 git clone "${github_repo}" $STACK_DIR || (cd $STACK_DIR && git pull)
+git clone "${github_repo_cliente}" $CLIENT_DIR || (cd $CLIENT_DIR && git pull)
+
+# 5.1 Criar contexto de infra para scripts de sincronização
+echo "Salvando contexto de infraestrutura..."
+mkdir -p /etc/infra
+cat <<EOF > /etc/infra/context.env
+INFRA_DOMAIN="${domain_name}"
+INFRA_USER_HOME="$USER_HOME"
+INFRA_NODE_NAME="${instance_display_name}"
+INFRA_INTERNAL_DNS="${instance_display_name}.public.mainvcn.oraclevcn.com"
+EOF
+chmod 644 /etc/infra/context.env
+
+# 5.2 Preparação de Namespaces e Segredos Base
+echo "Preparando infraestrutura de segredos..."
+for NS in database minio monitoring n8n; do
+  kubectl create namespace $NS --dry-run=client -o yaml | kubectl apply -f -
+  
+  # Criar Segredos de Infra (Admin)
+  kubectl create secret generic infra-secrets -n $NS \
+    --from-literal=db-user="${db_user}" \
+    --from-literal=db-pass="${db_pass}" \
+    --from-literal=database-password="${db_pass}" \
+    --from-literal=minio-root-password="${minio_pass}" \
+    --from-literal=grafana-admin-password="${grafana_pass}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  # Criar ConfigMaps de Infra
+  kubectl create configmap infra-config -n $NS \
+    --from-literal=domain="${domain_name}" \
+    --from-literal=db-name="${db_name}" \
+    --from-literal=grafana-admin-user="${grafana_user}" \
+    --from-literal=node-name="${instance_display_name}" \
+    --from-literal=internal-dns="${instance_display_name}.public.mainvcn.oraclevcn.com" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
 
 if [ -d "$STACK_DIR" ]; then
-  echo "Configurando variáveis..."
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<seu-dominio>>|${domain_name}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<user-home>>|$USER_HOME|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-user>>|${grafana_user}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<grafana-pass>>|${grafana_pass}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-user>>|${db_user}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-pass>>|${db_pass}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<db-name>>|${db_name}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<minio-pass>>|${minio_pass}|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<k8s-internal-dns>>|${instance_display_name}.public.mainvcn.oraclevcn.com|g" {} +
-  find $STACK_DIR -name "*.yaml" -type f -exec sed -i "s|<<k8s-node-name>>|${instance_display_name}|g" {} +
+  echo "Processando manifestos em diretório temporário..."
+  WORKING_DIR=$(mktemp -d)
   
+  # Copiar repositórios para o diretório de trabalho
+  cp -r $STACK_DIR/* "$WORKING_DIR/"
+  if [ -d "$CLIENT_DIR" ]; then
+    echo "Incluindo manifestos do repositório CLIENTE..."
+    cp -r $CLIENT_DIR/* "$WORKING_DIR/"
+  fi
+  
+  # Rodar SED apenas para campos que NÃO podem ser Secrets (Ingress, Affinity, HostPath)
+  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<seu-dominio>>|${domain_name}|g" {} +
+  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<user-home>>|$USER_HOME|g" {} +
+  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<k8s-node-name>>|${instance_display_name}|g" {} +
+  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<k8s-internal-dns>>|${instance_display_name}.public.mainvcn.oraclevcn.com|g" {} +
+  
+  # CloudBeaver Especial: Mantém o parse das credenciais no ConfigMap conforme solicitado
+  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<db-user>>|${db_user}|g" {} +
+  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<db-pass>>|${db_pass}|g" {} +
+  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<db-name>>|${db_name}|g" {} +
+
   chown -R ${user_instance}:${user_instance} $STACK_DIR
+  [ -d "$CLIENT_DIR" ] && chown -R ${user_instance}:${user_instance} $CLIENT_DIR
   
   # Garantir estabilidade e aplicar
   echo "Aguardando estabilidade do K3s..."
@@ -128,36 +177,23 @@ if [ -d "$STACK_DIR" ]; then
   echo "Aguardando CRDs do Traefik..."
   timeout 120s bash -c "until kubectl get crd ingressroutes.traefik.io > /dev/null 2>&1; do echo 'Aguardando CRD...'; sleep 5; done"
   
-  # Aplicar os manifestos
-  echo "#### Configurando Armazenamento..."
-  kubectl apply -f $STACK_DIR/volumes/
-
-  echo "#### Aplicando Portainer..."
-  kubectl apply -f $STACK_DIR/Portainer/
-
-  echo "#### Aplicando Banco de Dados e GUI..."
-  kubectl apply -f $STACK_DIR/Postgres/
-  kubectl apply -f $STACK_DIR/CloudBeaver/
-
-  echo "#### Aplicando MinIO..."
-  kubectl apply -f $STACK_DIR/Minio/
-
-  echo "#### Aplicando Page Error..."
-  kubectl apply -f $STACK_DIR/k8s-error-page/
+  # Aplicar os manifestos do WORKING_DIR (apenas YAML)
+  echo "#### Aplicando Manifestos de AMBOS os Repositórios..."
+  find "$WORKING_DIR" -type f ! \( -name "*.yaml" -o -name "*.yml" \) -delete
+  kubectl apply -R -f "$WORKING_DIR"
   
-  echo "#### Aplicando Monitoramento..."
-  kubectl apply -f $STACK_DIR/k8s-monitoring/
+  # Limpeza
+  rm -rf "$WORKING_DIR"
 else
-  echo "Repositório de Stack não encontrado."
+  echo "Repositório de Stack principal não encontrado."
 fi
 
-# 6. Validação de Saúde dos Pods
-echo "Aguardando pods ficarem prontos (timeout 300s)..."
+# 6. Validação de Saúde da Infra
+echo "Aguardando pods de infra ficarem prontos..."
 kubectl wait --for=condition=ready pod --all -n database --timeout=300s || true
 kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
-kubectl wait --for=condition=ready pod --all -n monitoring --timeout=300s || true
 
 # 7. Notificar Discord Final
-notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n ☸️ **Kubernetes Status:**\n- 🐳 **Portainer:** https://portainer.${domain_name}\n- 📊 **Grafana:** https://grafana.${domain_name}\n- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}\n- 📦 **MinIO Console:** https://minio.${domain_name}\n- ☁️ **MinIO S3 API:** https://s3.${domain_name}\n\n✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
+notify_discord "🚀 **Infra OCI Base Pronta!**\n ☸️ **Status:** Servidor configurado e repositórios clonados.\n\n⚠️ **Nota:** A configuração de aplicações (bancos n8n, etc) deve ser feita via scripts do repositório do cliente."
 
 echo "Configuração finalizada."
