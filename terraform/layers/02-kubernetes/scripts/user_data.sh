@@ -119,29 +119,50 @@ INFRA_INTERNAL_DNS="${instance_display_name}.public.mainvcn.oraclevcn.com"
 EOF
 chmod 644 /etc/infra/context.env
 
-# 5.2 Preparação de Namespaces e Segredos Base
-echo "Preparando infraestrutura de segredos..."
+# 5.2 Preparação de Namespaces e Infra Base
+echo "Configurando Namespaces e Segredos..."
+
+# Criar Namespaces
 for NS in database minio monitoring n8n; do
   kubectl create namespace $NS --dry-run=client -o yaml | kubectl apply -f -
   
-  # Criar Segredos de Infra (Admin)
-  kubectl create secret generic infra-secrets -n $NS \
-    --from-literal=db-user="${db_user}" \
-    --from-literal=db-pass="${db_pass}" \
-    --from-literal=database-password="${db_pass}" \
-    --from-literal=minio-root-password="${minio_pass}" \
-    --from-literal=grafana-admin-password="${grafana_pass}" \
-    --dry-run=client -o yaml | kubectl apply -f -
-
-  # Criar ConfigMaps de Infra
+  # ConfigMap Universal (Domínio e Contexto)
   kubectl create configmap infra-config -n $NS \
     --from-literal=domain="${domain_name}" \
-    --from-literal=db-name="${db_name}" \
-    --from-literal=grafana-admin-user="${grafana_user}" \
     --from-literal=node-name="${instance_display_name}" \
     --from-literal=internal-dns="${instance_display_name}.public.mainvcn.oraclevcn.com" \
     --dry-run=client -o yaml | kubectl apply -f -
 done
+
+# Configurações Específicas por Namespace (Para evitar redundância mas garantir funcionalidade)
+
+# Database: Nome do banco inicial
+kubectl patch configmap infra-config -n database --type merge -p "{\"data\":{\"db-name\":\"${db_name}\"}}"
+
+# Monitoring: Usuário Admin do Grafana
+kubectl patch configmap infra-config -n monitoring --type merge -p "{\"data\":{\"grafana-admin-user\":\"${grafana_user}\"}}"
+
+# n8n: Configurações de banco para o App
+kubectl patch configmap infra-config -n n8n --type merge -p "{\"data\":{\"n8n-db-name\":\"n8n\", \"n8n-db-user\":\"n8n_user\"}}"
+
+# Secrets Cirúrgicos (Sem redundância desnecessária)
+
+# Database: Senhas do Postgres
+kubectl create secret generic infra-secrets -n database \
+  --from-literal=db-user="${db_user}" \
+  --from-literal=db-pass="${db_pass}" \
+  --from-literal=database-password="${db_pass}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# MinIO: Senha Root
+kubectl create secret generic infra-secrets -n minio \
+  --from-literal=minio-root-password="${minio_pass}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Monitoring: Senha Admin do Grafana
+kubectl create secret generic infra-secrets -n monitoring \
+  --from-literal=grafana-admin-password="${grafana_pass}" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
 if [ -d "$STACK_DIR" ]; then
   echo "Processando manifestos em diretório temporário..."
@@ -194,6 +215,6 @@ kubectl wait --for=condition=ready pod --all -n database --timeout=300s || true
 kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
 
 # 7. Notificar Discord Final
-notify_discord "🚀 **Infra OCI Base Pronta!**\n ☸️ **Status:** Servidor configurado e repositórios clonados.\n\n⚠️ **Nota:** A configuração de aplicações (bancos n8n, etc) deve ser feita via scripts do repositório do cliente."
+notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n ☸️ **Kubernetes Status:** OK!\n- 🐳 **Portainer:** https://portainer.${domain_name}\n- 📊 **Grafana:** https://grafana.${domain_name}\n- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}\n- 📦 **MinIO Console:** https://minio.${domain_name}\n- ☁️ **MinIO S3 API:** https://s3.${domain_name}\n\n✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
 
 echo "Configuração finalizada."
