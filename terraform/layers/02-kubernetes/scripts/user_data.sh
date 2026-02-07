@@ -202,6 +202,16 @@ if [ -d "$STACK_DIR" ]; then
   echo "#### Aplicando Manifestos de AMBOS os Repositórios..."
   find "$WORKING_DIR" -type f ! \( -name "*.yaml" -o -name "*.yml" \) -delete
   kubectl apply -R -f "$WORKING_DIR"
+
+  # 5.3 Executar Scripts de Setup Especializados (se existirem)
+  echo "🎯 Verificando scripts de setup especializados..."
+  # Garantir que os scripts sejam executáveis
+  [ -d "$STACK_DIR/scripts" ] && find "$STACK_DIR/scripts" -name "*.sh" -exec chmod +x {} \;
+  [ -d "$CLIENT_DIR/scripts" ] && find "$CLIENT_DIR/scripts" -name "*.sh" -exec chmod +x {} \;
+  
+  # Executar
+  [ -d "$STACK_DIR/scripts" ] && find "$STACK_DIR/scripts" -name "*.sh" -exec bash {} \;
+  [ -d "$CLIENT_DIR/scripts" ] && find "$CLIENT_DIR/scripts" -name "*.sh" -exec bash {} \;
   
   # Limpeza
   rm -rf "$WORKING_DIR"
