@@ -116,6 +116,10 @@ INFRA_DOMAIN="${domain_name}"
 INFRA_USER_HOME="$USER_HOME"
 INFRA_NODE_NAME="${instance_display_name}"
 INFRA_INTERNAL_DNS="${instance_display_name}.public.mainvcn.oraclevcn.com"
+AWS_ACCESS_KEY="${aws_access_key}"
+AWS_SECRET_KEY="${aws_secret_key}"
+AWS_REGION="${aws_region}"
+BACKUP_BUCKET="${backup_bucket}"
 EOF
 chmod 644 /etc/infra/context.env
 
@@ -133,6 +137,14 @@ for NS in database minio monitoring n8n; do
     --from-literal=internal-dns="${instance_display_name}.public.mainvcn.oraclevcn.com" \
     --dry-run=client -o yaml | kubectl apply -f -
 done
+
+# Secrets de Backup (AWS) - No namespace do banco de dados
+kubectl create secret generic aws-backup-creds -n database \
+  --from-literal=access-key="${aws_access_key}" \
+  --from-literal=secret-key="${aws_secret_key}" \
+  --from-literal=region="${aws_region}" \
+  --from-literal=bucket="${backup_bucket}" \
+  --dry-run=client -o yaml | kubectl apply -f -
 
 # Configurações Específicas por Namespace (Para evitar redundância mas garantir funcionalidade)
 
@@ -223,6 +235,39 @@ fi
 echo "Aguardando pods de infra ficarem prontos..."
 kubectl wait --for=condition=ready pod --all -n database --timeout=300s || true
 kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
+
+# 6.1 Auto-Restore do Postgres (Case Volume is Empty)
+PG_DATA_DIR="/mnt/db-vol/pgdata"
+if [ -d "/mnt/db-vol" ] && [ -z "$(ls -A $PG_DATA_DIR 2>/dev/null)" ]; then
+  echo "📂 Volume de dados vazio detectado. Verificando backups no S3..."
+  
+  # Instalar AWS CLI temporariamente se não houver
+  if ! command -v aws &> /dev/null; then
+    apt-get update && apt-get install -y awscli
+  fi
+
+  export AWS_ACCESS_KEY_ID="${aws_access_key}"
+  export AWS_SECRET_ACCESS_KEY="${aws_secret_key}"
+  export AWS_DEFAULT_REGION="${aws_region}"
+  
+  LATEST_BACKUP=$(aws s3 ls "s3://${backup_bucket}/backups/" | sort | tail -n 1 | awk '{print $4}')
+  
+  if [ -n "$LATEST_BACKUP" ]; then
+    echo "📥 Restaurando backup mais recente: $LATEST_BACKUP"
+    PG_POD=$(kubectl get pods -n database -l app=postgres -o name | head -n 1)
+    
+    aws s3 cp "s3://${backup_bucket}/backups/$LATEST_BACKUP" - | zcat | \
+      kubectl exec -i -n database "$PG_POD" -- psql -U admin -d postgres
+    
+    if [ $? -eq 0 ]; then
+      echo "✅ Restore concluído com sucesso!"
+    else
+      echo "❌ Falha no restore do backup."
+    fi
+  else
+    echo "ℹ️ Nenhum backup encontrado no S3 para restauração."
+  fi
+fi
 
 # 7. Notificar Discord Final
 notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n ☸️ **Kubernetes Status:** OK!\n- 🐳 **Portainer:** https://portainer.${domain_name}\n- 📊 **Grafana:** https://grafana.${domain_name}\n- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}\n- 📦 **MinIO Console:** https://minio.${domain_name}\n- ☁️ **MinIO S3 API:** https://s3.${domain_name}\n\n✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"

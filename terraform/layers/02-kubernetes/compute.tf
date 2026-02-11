@@ -57,6 +57,10 @@ resource "oci_core_instance" "ubuntu_instance" {
       minio_user            = var.minio_root_user
       minio_pass            = var.minio_root_password
       instance_display_name = var.instance_display_name
+      aws_access_key        = var.aws_access_key_backup
+      aws_secret_key        = var.aws_secret_key_backup
+      aws_region            = var.aws_region_backup
+      backup_bucket         = var.backup_bucket_name
     }))
   }
 }

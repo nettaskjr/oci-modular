@@ -27,3 +27,9 @@ variable "db_user" {}
 variable "minio_root_user" { default = "admin" }
 variable "minio_root_password" { sensitive = true }
 variable "cloudflare_account_id" {}
+
+# AWS Backup Configuration
+variable "aws_access_key_backup" { sensitive = true }
+variable "aws_secret_key_backup" { sensitive = true }
+variable "aws_region_backup" { default = "us-east-1" }
+variable "backup_bucket_name" { default = "backup-nettask.com.br" }

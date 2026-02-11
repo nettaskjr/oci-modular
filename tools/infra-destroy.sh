@@ -43,6 +43,20 @@ destroy_layer() {
   cd "$ROOT_DIR"
 }
 
+# Função para backup de emergência antes do destroy
+perform_emergency_backup() {
+  echo "----------------------------------------------------------------"
+  echo "📦 DISPARANDO BACKUP DE EMERGÊNCIA REMOTO (S3)..."
+  echo "----------------------------------------------------------------"
+  
+  DOMAIN=$(grep "domain_name" "$AUTO_VAR_FILE" | cut -d'=' -f2 | tr -d ' "' | xargs)
+  SSH_HOST="ssh.$DOMAIN"
+
+  echo "🔗 Conectando a $SSH_HOST para disparar backup..."
+  
+  ssh -v -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$SSH_HOST" "kubectl get cronjob postgres-backup-s3 -n database && kubectl create job --from=cronjob/postgres-backup-s3 emergency-backup-\$(date +%s) -n database && echo '⏳ Aguardando conclusão...' && sleep 10" || echo "⚠️  Pulando backup (SVR Offline ou Erro)."
+}
+
 # --- MENU DE DESTRUIÇÃO ---
 echo "----------------------------------------------------------------"
 echo "☢️  MENU DE DESTRUIÇÃO - OCI INFRA"
@@ -50,13 +64,14 @@ echo "----------------------------------------------------------------"
 echo "Escolha a camada que deseja destruir:"
 
 COLUMNS=1
-options=("02-kubernetes" "01b-volumes" "01-base-infra" "TODOS (Destruição Total)" "Sair")
+options=("02-kubernetes" "01b-volumes" "01-base-infra" "TODOS" "Sair")
 PS3="Digite o número da opção: "
 
 select opt in "${options[@]}"
 do
-    case $opt in
+    case "$opt" in
         "02-kubernetes")
+            perform_emergency_backup
             destroy_layer "02-kubernetes"
             break
             ;;
@@ -68,20 +83,19 @@ do
             destroy_layer "01-base-infra"
             break
             ;;
-        "TODOS (Destruição Total)")
-            echo "⚠️  AVISO: Iniciando destruição completa em ordem reversa..."
+        "TODOS")
+            echo "⚠️  AVISO: Iniciando destruição completa..."
+            perform_emergency_backup
             destroy_layer "02-kubernetes"
             destroy_layer "01b-volumes"
             destroy_layer "01-base-infra"
-            echo "----------------------------------------------------------------"
-            echo "🌋 INFRAESTRUTURA COMPLETAMENTE REMOVIDA! 🔌"
-            echo "----------------------------------------------------------------"
             break
             ;;
         "Sair")
-            echo "Operação cancelada."
             exit 0
             ;;
-        *) echo "Opção inválida $REPLY";;
+        *)
+            echo "Opção inválida"
+            ;;
     esac
 done
