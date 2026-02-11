@@ -126,8 +126,8 @@ chmod 644 /etc/infra/context.env
 # 5.2 Preparação de Namespaces e Infra Base
 echo "Configurando Namespaces e Segredos..."
 
-# Criar Namespaces
-for NS in database minio monitoring n8n; do
+# Criar Namespaces de Infra
+for NS in database minio monitoring; do
   kubectl create namespace $NS --dry-run=client -o yaml | kubectl apply -f -
   
   # ConfigMap Universal (Domínio e Contexto)
@@ -153,9 +153,6 @@ kubectl patch configmap infra-config -n database --type merge -p "{\"data\":{\"d
 
 # Monitoring: Usuário Admin do Grafana
 kubectl patch configmap infra-config -n monitoring --type merge -p "{\"data\":{\"grafana-admin-user\":\"${grafana_user}\"}}"
-
-# n8n: Configurações de banco para o App
-kubectl patch configmap infra-config -n n8n --type merge -p "{\"data\":{\"n8n-db-name\":\"n8n\", \"n8n-db-user\":\"n8n_user\"}}"
 
 # Secrets Cirúrgicos (Sem redundância desnecessária)
 
@@ -236,37 +233,55 @@ echo "Aguardando pods de infra ficarem prontos..."
 kubectl wait --for=condition=ready pod --all -n database --timeout=300s || true
 kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
 
-# 6.1 Auto-Restore do Postgres (Case Volume is Empty)
-PG_DATA_DIR="/mnt/db-vol/pgdata"
-if [ -d "/mnt/db-vol" ] && [ -z "$(ls -A $PG_DATA_DIR 2>/dev/null)" ]; then
-  echo "📂 Volume de dados vazio detectado. Verificando backups no S3..."
+# 6.1 Auto-Restore do Postgres (Baseado em Marker File)
+RESTORE_MARKER="/mnt/db-vol/.restore_done"
+
+if [ -d "/mnt/db-vol" ] && [ ! -f "$RESTORE_MARKER" ]; then
+  echo "📂 Volume novo ou sem marcação de restore detectado em /mnt/db-vol."
+  echo "📥 Buscando backups no S3 para inicialização..."
   
-  # Instalar AWS CLI temporariamente se não houver
-  if ! command -v aws &> /dev/null; then
-    apt-get update && apt-get install -y awscli
+  # Instalar AWS CLI v2 oficial para ARM64 (aarch64) se não houver
+  if ! command -v aws &> /dev/null ; then
+    echo "📦 Instalando AWS CLI v2 (ARM64)..."
+    apt-get update && apt-get install -y unzip curl
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+    unzip -q awscliv2.zip
+    sudo ./aws/install
+    rm -rf awscliv2.zip ./aws
   fi
 
   export AWS_ACCESS_KEY_ID="${aws_access_key}"
   export AWS_SECRET_ACCESS_KEY="${aws_secret_key}"
   export AWS_DEFAULT_REGION="${aws_region}"
   
-  LATEST_BACKUP=$(aws s3 ls "s3://${backup_bucket}/backups/" | sort | tail -n 1 | awk '{print $4}')
+  LATEST_BACKUP=$(aws s3 ls "s3://${backup_bucket}/backups/" | grep "backup_all" | sort | tail -n 1 | awk '{print $4}')
   
   if [ -n "$LATEST_BACKUP" ]; then
     echo "📥 Restaurando backup mais recente: $LATEST_BACKUP"
     PG_POD=$(kubectl get pods -n database -l app=postgres -o name | head -n 1)
     
-    aws s3 cp "s3://${backup_bucket}/backups/$LATEST_BACKUP" - | zcat | \
-      kubectl exec -i -n database "$PG_POD" -- psql -U admin -d postgres
-    
-    if [ $? -eq 0 ]; then
-      echo "✅ Restore concluído com sucesso!"
+    if [ -n "$PG_POD" ]; then
+      # O dumpall contém comandos de criação, então restauramos no banco 'postgres' padrão
+      aws s3 cp "s3://${backup_bucket}/backups/$LATEST_BACKUP" - | zcat | \
+        kubectl exec -i -n database "$PG_POD" -- psql -U admin -d postgres
+      
+      if [ $? -eq 0 ]; then
+        echo "✅ Restore concluído com sucesso!"
+        touch "$RESTORE_MARKER"
+        # Reiniciar apps que dependem do banco para garantir nova conexão
+        kubectl rollout restart deployment n8n -n n8n || true
+      else
+        echo "❌ Falha no restore do backup."
+      fi
     else
-      echo "❌ Falha no restore do backup."
+      echo "⚠️ Erro: Pod do Postgres não encontrado para restore."
     fi
   else
-    echo "ℹ️ Nenhum backup encontrado no S3 para restauração."
+    echo "ℹ️ Nenhum backup encontrado no S3. Iniciando com banco vazio."
+    touch "$RESTORE_MARKER" # Marca como feito para não tentar novamente no próximo boot
   fi
+else
+  echo "✅ Volume já possui dados ou marcação de restore em $RESTORE_MARKER. Pulando."
 fi
 
 # 7. Notificar Discord Final
