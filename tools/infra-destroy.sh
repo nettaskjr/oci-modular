@@ -52,9 +52,19 @@ perform_emergency_backup() {
   DOMAIN=$(grep "domain_name" "$AUTO_VAR_FILE" | cut -d'=' -f2 | tr -d ' "' | xargs)
   SSH_HOST="ssh.$DOMAIN"
 
-  echo "🔗 Conectando a $SSH_HOST para disparar backup..."
-  
-  ssh -v -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$SSH_HOST" "kubectl get cronjob postgres-backup-s3 -n database && kubectl create job --from=cronjob/postgres-backup-s3 emergency-backup-\$(date +%s) -n database && echo '⏳ Aguardando conclusão...' && sleep 10" || echo "⚠️  Pulando backup (SVR Offline ou Erro)."
+  ssh -o ConnectTimeout=15 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$SSH_HOST" "
+    export KUBECONFIG=/etc/rancher/k3s/k3s.yaml;
+    if sudo kubectl get cronjob postgres-backup-s3 -n database &> /dev/null; then
+      JOB_NAME=\"emergency-backup-\$(date +%s)\"
+      echo \"🚀 Criando Job de emergência: \$JOB_NAME\"
+      sudo kubectl create job --from=cronjob/postgres-backup-s3 \$JOB_NAME -n database
+      echo \"⏳ Aguardando upload para S3 (timeout 5 min)...\"
+      sudo kubectl wait --for=condition=complete job/\$JOB_NAME -n database --timeout=300s
+      echo \"✅ Backup finalizado com sucesso!\"
+    else
+      echo \"⚠️ CronJob de backup não encontrado. Pulando...\"
+    fi
+  " || echo "⚠️ Erro ao disparar backup remoto (SVR offline ou timeout)."
 }
 
 # --- MENU DE DESTRUIÇÃO ---
