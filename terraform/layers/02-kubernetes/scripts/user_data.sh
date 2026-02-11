@@ -25,6 +25,7 @@ wait_for_apt() {
 }
 
 echo "Iniciando configuração da instância (Branch Main/Stateless)..."
+timedatectl set-timezone America/Sao_Paulo
 
 # 1. Atualização e Instalação de Pacotes Básicos
 export DEBIAN_FRONTEND=noninteractive
