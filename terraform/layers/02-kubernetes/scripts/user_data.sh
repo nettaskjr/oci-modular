@@ -24,6 +24,35 @@ wait_for_apt() {
   echo "Lock liberado!"
 }
 
+# Função para montar discos baseada no tamanho
+mount_by_size() {
+  local TARGET_SIZE=$1
+  local MOUNT_POINT=$2
+  local TIMEOUT=120
+  local SECONDS=0
+  
+  echo "Procurando disco de $${TARGET_SIZE}GB para $${MOUNT_POINT}..."
+  
+  while [ $SECONDS -lt $TIMEOUT ]; do
+    # lsblk retorna tamanho em G. Ex: 50G, 100G.
+    DEV=$(lsblk -bndo NAME,SIZE | awk -v size="$${TARGET_SIZE}" '$2 == size*1024*1024*1024 {print "/dev/"$1}' | head -n 1)
+    
+    if [ -n "$DEV" ]; then
+      echo "Disco de $${TARGET_SIZE}GB encontrado em $${DEV}. Montando..."
+      mkdir -p "$MOUNT_POINT"
+      blkid "$DEV" || mkfs.ext4 -L "$(basename $MOUNT_POINT)" "$DEV"
+      mount "$DEV" "$MOUNT_POINT" || true
+      echo "$DEV $MOUNT_POINT ext4 defaults,_netdev 0 2" >> /etc/fstab
+      return 0
+    fi
+    sleep 5
+    SECONDS=$((SECONDS+5))
+  done
+  
+  echo "ERRO: Disco de $${TARGET_SIZE}GB não encontrado após $${TIMEOUT}s"
+  return 1
+}
+
 echo "Iniciando configuração da instância (Branch Main/Stateless)..."
 timedatectl set-timezone America/Sao_Paulo
 
@@ -64,42 +93,10 @@ echo "export KUBECONFIG=$USER_HOME/.kube/config" >> $USER_HOME/.bashrc
 
 # 4. Configuração de Volumes Persistentes (Auto-login via OCI Agent)
 echo "Aguardando volumes extra (Agent login)..."
-# O Oracle Cloud Agent faz o login iscsi automaticamente se habilitado no Terraform.
-# Vamos detectar os discos pelos tamanhos definidos: 50GB (DB) e 100GB (MinIO).
-
-mount_by_size() {
-  local TARGET_SIZE=$1
-  local MOUNT_POINT=$2
-  local TIMEOUT=120
-  local SECONDS=0
-  
-  echo "Procurando disco de $${TARGET_SIZE}GB para $${MOUNT_POINT}..."
-  
-  while [ $SECONDS -lt $TIMEOUT ]; do
-    # lsblk retorna tamanho em G. Ex: 50G, 100G.
-    DEV=$(lsblk -bndo NAME,SIZE | awk -v size="$${TARGET_SIZE}" '$2 == size*1024*1024*1024 {print "/dev/"$1}' | head -n 1)
-    
-    if [ -n "$DEV" ]; then
-      echo "Disco de $${TARGET_SIZE}GB encontrado em $${DEV}. Montando..."
-      mkdir -p "$MOUNT_POINT"
-      blkid "$DEV" || mkfs.ext4 -L "$(basename $MOUNT_POINT)" "$DEV"
-      mount "$DEV" "$MOUNT_POINT" || true
-      echo "$DEV $MOUNT_POINT ext4 defaults,_netdev 0 2" >> /etc/fstab
-      return 0
-    fi
-    sleep 5
-    SECONDS=$((SECONDS+5))
-  done
-  
-  echo "ERRO: Disco de $${TARGET_SIZE}GB não encontrado após $${TIMEOUT}s"
-  return 1
-}
 
 # Tenta montar os volumes
 mount_by_size 50 "/mnt/db-vol" || true
 mount_by_size 100 "/mnt/minio-vol" || true
-
-# Configurações Explícitas removidas para evitar ciclos de dependência
 
 # 5. GitOps: Clonar Repositórios e instalacao dos apps via manifestos
 STACK_DIR="$USER_HOME/.stack"
@@ -117,6 +114,9 @@ INFRA_DOMAIN="${domain_name}"
 INFRA_USER_HOME="$USER_HOME"
 INFRA_NODE_NAME="${instance_display_name}"
 INFRA_INTERNAL_DNS="${instance_display_name}.public.mainvcn.oraclevcn.com"
+INFRA_DB_USER="${db_user}"
+INFRA_DB_PASS="${db_pass}"
+INFRA_DB_NAME="${db_name}"
 AWS_ACCESS_KEY="${aws_access_key}"
 AWS_SECRET_KEY="${aws_secret_key}"
 AWS_REGION="${aws_region}"
@@ -147,15 +147,11 @@ kubectl create secret generic aws-backup-creds -n database \
   --from-literal=bucket="${backup_bucket}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Configurações Específicas por Namespace (Para evitar redundância mas garantir funcionalidade)
-
 # Database: Nome do banco inicial
 kubectl patch configmap infra-config -n database --type merge -p "{\"data\":{\"db-name\":\"${db_name}\"}}"
 
 # Monitoring: Usuário Admin do Grafana
 kubectl patch configmap infra-config -n monitoring --type merge -p "{\"data\":{\"grafana-admin-user\":\"${grafana_user}\"}}"
-
-# Secrets Cirúrgicos (Sem redundância desnecessária)
 
 # Database: Senhas do Postgres
 kubectl create secret generic infra-secrets -n database \
@@ -174,6 +170,46 @@ kubectl create secret generic infra-secrets -n monitoring \
   --from-literal=grafana-admin-password="${grafana_pass}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
+# 5.3 CloudBeaver: Configuração de Conexão Segura (Via Secret)
+echo "🛠️ Configurando CloudBeaver (Database Tools)..."
+CB_CONFIG_FILE=$(mktemp)
+cat <<EOF > "$CB_CONFIG_FILE"
+{
+  "folders": {},
+  "connections": {
+    "postgres-jdbc-infra": {
+      "provider": "postgresql",
+      "driver": "postgres-jdbc",
+      "name": "OCI PostgreSQL",
+      "save-password": true,
+      "configuration": {
+        "host": "postgres.database",
+        "port": "5432",
+        "database": "${db_name}",
+        "url": "jdbc:postgresql://postgres.database:5432/${db_name}",
+        "configurationType": "MANUAL",
+        "type": "dev",
+        "properties": {
+          "user": "${db_user}",
+          "password": "${db_pass}"
+        },
+        "authProperties": {
+          "user": "${db_user}",
+          "password": "${db_pass}"
+        },
+        "authModel": "native"
+      }
+    }
+  }
+}
+EOF
+
+kubectl create secret generic cloudbeaver-datasources -n database \
+  --from-file=data-sources.json="$CB_CONFIG_FILE" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+rm "$CB_CONFIG_FILE"
+
 if [ -d "$STACK_DIR" ]; then
   echo "Processando manifestos em diretório temporário..."
   WORKING_DIR=$(mktemp -d)
@@ -185,16 +221,11 @@ if [ -d "$STACK_DIR" ]; then
     cp -r $CLIENT_DIR/* "$WORKING_DIR/"
   fi
   
-  # Rodar SED apenas para campos que NÃO podem ser Secrets (Ingress, Affinity, HostPath)
+  # Substituições de Infraestrutura Básica (Caminhos e DNS)
   find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<seu-dominio>>|${domain_name}|g" {} +
   find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<user-home>>|$USER_HOME|g" {} +
   find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<k8s-node-name>>|${instance_display_name}|g" {} +
   find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<k8s-internal-dns>>|${instance_display_name}.public.mainvcn.oraclevcn.com|g" {} +
-  
-  # CloudBeaver Especial: Mantém o parse das credenciais no ConfigMap conforme solicitado
-  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<db-user>>|${db_user}|g" {} +
-  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<db-pass>>|${db_pass}|g" {} +
-  find "$WORKING_DIR" -name "*.yaml" -type f -exec sed -i "s|<<db-name>>|${db_name}|g" {} +
 
   chown -R ${user_instance}:${user_instance} $STACK_DIR
   [ -d "$CLIENT_DIR" ] && chown -R ${user_instance}:${user_instance} $CLIENT_DIR
@@ -208,20 +239,20 @@ if [ -d "$STACK_DIR" ]; then
   echo "Aguardando CRDs do Traefik..."
   timeout 120s bash -c "until kubectl get crd ingressroutes.traefik.io > /dev/null 2>&1; do echo 'Aguardando CRD...'; sleep 5; done"
   
-  # Aplicar os manifestos do WORKING_DIR (apenas YAML)
-  echo "#### Aplicando Manifestos de AMBOS os Repositórios..."
-  find "$WORKING_DIR" -type f ! \( -name "*.yaml" -o -name "*.yml" \) -delete
-  kubectl apply -R -f "$WORKING_DIR"
-
-  # 5.3 Executar Scripts de Setup Especializados (se existirem)
+  # 5.3 Executar Scripts de Setup Especializados (se existirem) - Roda ANTES dos manifestos
   echo "🎯 Verificando scripts de setup especializados..."
   # Garantir que os scripts sejam executáveis
   [ -d "$STACK_DIR/scripts" ] && find "$STACK_DIR/scripts" -name "*.sh" -exec chmod +x {} \;
   [ -d "$CLIENT_DIR/scripts" ] && find "$CLIENT_DIR/scripts" -name "*.sh" -exec chmod +x {} \;
   
-  # Executar
+  # Executar setups (onde o namespace n8n e segredos são criados)
   [ -d "$STACK_DIR/scripts" ] && find "$STACK_DIR/scripts" -name "*.sh" -exec bash {} \;
   [ -d "$CLIENT_DIR/scripts" ] && find "$CLIENT_DIR/scripts" -name "*.sh" -exec bash {} \;
+
+  # 5.4 Aplicar os manifestos do WORKING_DIR (apenas YAML)
+  echo "#### Aplicando Manifestos de AMBOS os Repositórios..."
+  find "$WORKING_DIR" -type f ! \( -name "*.yaml" -o -name "*.yml" \) -delete
+  kubectl apply -R -f "$WORKING_DIR"
   
   # Limpeza
   rm -rf "$WORKING_DIR"
@@ -238,12 +269,12 @@ kubectl wait --for=condition=ready pod --all -n minio --timeout=300s || true
 RESTORE_MARKER="/mnt/db-vol/.restore_done"
 
 if [ -d "/mnt/db-vol" ] && [ ! -f "$RESTORE_MARKER" ]; then
-  echo "📂 Volume novo ou sem marcação de restore detectado em /mnt/db-vol."
-  echo "📥 Buscando backups no S3 para inicialização..."
+  echo "Volume novo ou sem marcação de restore detectado em /mnt/db-vol."
+  echo "Buscando backups no S3 para inicialização..."
   
   # Instalar AWS CLI v2 oficial para ARM64 (aarch64) se não houver
   if ! command -v aws &> /dev/null ; then
-    echo "📦 Instalando AWS CLI v2 (ARM64)..."
+    echo "Instalando AWS CLI v2 (ARM64)..."
     apt-get update && apt-get install -y unzip curl
     curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
     unzip -q awscliv2.zip
@@ -258,7 +289,7 @@ if [ -d "/mnt/db-vol" ] && [ ! -f "$RESTORE_MARKER" ]; then
   LATEST_BACKUP=$(aws s3 ls "s3://${backup_bucket}/backups/" | grep "backup_all" | sort | tail -n 1 | awk '{print $4}')
   
   if [ -n "$LATEST_BACKUP" ]; then
-    echo "📥 Restaurando backup mais recente: $LATEST_BACKUP"
+    echo "Restaurando backup mais recente: $LATEST_BACKUP"
     PG_POD=$(kubectl get pods -n database -l app=postgres -o name | head -n 1)
     
     if [ -n "$PG_POD" ]; then
@@ -278,7 +309,7 @@ if [ -d "/mnt/db-vol" ] && [ ! -f "$RESTORE_MARKER" ]; then
       echo "⚠️ Erro: Pod do Postgres não encontrado para restore."
     fi
   else
-    echo "ℹ️ Nenhum backup encontrado no S3. Iniciando com banco vazio."
+    echo "⚠️ Nenhum backup encontrado no S3. Iniciando com banco vazio."
     touch "$RESTORE_MARKER" # Marca como feito para não tentar novamente no próximo boot
   fi
 else
