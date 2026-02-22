@@ -43,7 +43,7 @@ resource "oci_core_instance" "ubuntu_instance" {
     # Cloud-Init Script para instalar e configurar Cloudflared K3s e manifestos iniciais
     user_data = base64encode(templatefile("${path.module}/scripts/user_data.sh", {
       tunnel_token          = data.terraform_remote_state.base.outputs.tunnel_token
-      discord_webhook_url   = var.discord_webhook_url
+      webhook_url           = var.webhook_url
       domain_name           = var.domain_name
       user_instance         = var.user_instance
       github_repo           = var.github_repo

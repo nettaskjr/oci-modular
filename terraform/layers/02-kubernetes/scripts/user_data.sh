@@ -5,13 +5,13 @@ set -e
 # Log de execução para debug
 exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
 
-# Função de Notificação Discord (Geração de JSON robusta via Python)
-notify_discord() {
+# Função de Notificação Webhook (Geração de JSON robusta via Python)
+notify_webhook() {
   local MESSAGE="$1"
   local SEPARADOR="-----------------------------------------"
-  curl -H "Content-Type: application/json" -d "{\"content\": \"$SEPARADOR\"}" "${discord_webhook_url}" || true
-  if [ -n "${discord_webhook_url}" ]; then
-    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${discord_webhook_url}" || true
+  curl -H "Content-Type: application/json" -d "{\"content\": \"$SEPARADOR\"}" "${webhook_url}" || true
+  if [ -n "${webhook_url}" ]; then
+    curl -H "Content-Type: application/json" -d "{\"content\": \"$MESSAGE\"}" "${webhook_url}" || true
   fi
 }
 
@@ -77,8 +77,8 @@ echo "Registrando túnel..."
 cloudflared service install "${tunnel_token}" || true
 systemctl restart cloudflared
 
-# Notificar Discord sobre SSH (Túnel UP)
-notify_discord "⏳ **Cloudflare Tunnel UP!**\n- 🔐 SSH disponível: \`ssh ssh.${domain_name}\`\n- 🔄 Aguardando setup do Kubernetes..."
+# Notificar Webhook sobre SSH (Túnel UP)
+notify_webhook "⏳ **Cloudflare Tunnel UP!**\n- 🔐 SSH disponível: \`ssh ssh.${domain_name}\`\n- 🔄 Aguardando setup do Kubernetes..."
 
 # 3. Instalação do K3s
 export K3S_KUBECONFIG_MODE="644"
@@ -316,7 +316,7 @@ else
   echo "✅ Volume já possui dados ou marcação de restore em $RESTORE_MARKER. Pulando."
 fi
 
-# 7. Notificar Discord Final
-notify_discord "🚀 **Infra OCI com Persistência Pronta!**\n ☸️ **Kubernetes Status:** OK!\n- 🐳 **Portainer:** https://portainer.${domain_name}\n- 📊 **Grafana:** https://grafana.${domain_name}\n- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}\n- 📦 **MinIO Console:** https://minio.${domain_name}\n- ☁️ **MinIO S3 API:** https://s3.${domain_name}\n\n✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
+# 7. Notificar Webhook Final
+notify_webhook "🚀 **Infra OCI com Persistência Pronta!**\n ☸️ **Kubernetes Status:** OK!\n- 🐳 **Portainer:** https://portainer.${domain_name}\n- 📊 **Grafana:** https://grafana.${domain_name}\n- 🐘 **Postgres & 🗄️ CloudBeaver:** https://db.${domain_name}\n- 📦 **MinIO Console:** https://minio.${domain_name}\n- ☁️ **MinIO S3 API:** https://s3.${domain_name}\n\n✅ Todos os volumes iSCSI (DB 50GB & MinIO 100GB) foram montados com sucesso!"
 
 echo "Configuração finalizada."
