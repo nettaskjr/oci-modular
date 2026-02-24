@@ -36,7 +36,7 @@ resource "oci_core_security_list" "strict_sl" {
     description = "Allow all internal VCN traffic"
   }
 
-  # DEBUG: SSH Temporário
+  /*   # DEBUG: SSH Temporário
   ingress_security_rules {
     protocol = "6" # TCP
     source   = "0.0.0.0/0"
@@ -45,7 +45,7 @@ resource "oci_core_security_list" "strict_sl" {
       min = 22
     }
     description = "DEBUG: Allow SSH access temporarily"
-  }
+  } */
 
   # Egress: Permitir todo tráfego de saída (necessário para o Cloudflared)
   egress_security_rules {
